@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -19,12 +18,19 @@ OPEN_WEBUI_DATA_DIR = ROOT_DIR / "open-webui-data"
 VENV_DIR = ROOT_DIR / ".venv"
 ADAPTER_LOG = STATE_DIR / "adapter.log"
 ADAPTER_PID = STATE_DIR / "adapter.pid"
+BUILD_PATCHED_WEBUI_SCRIPT = ROOT_DIR / "scripts" / "build_patched_openwebui.py"
+INSTALL_WORKSPACE_ASSETS_SCRIPT = ROOT_DIR / "scripts" / "install_openwebui_workspace_assets.py"
+
 DEFAULT_MODEL = os.getenv("HERMES_OPENAI_MODEL", "hermes-gui")
 DEFAULT_API_KEY = os.getenv("HERMES_OPENAI_API_KEY", "hermes-local")
 ADAPTER_PORT = int(os.getenv("HERMES_ADAPTER_PORT", "8001"))
 WEBUI_PORT = int(os.getenv("HERMES_WEBUI_PORT", "8080"))
 WEBUI_CONTAINER = os.getenv("HERMES_WEBUI_CONTAINER", "hermes-open-webui")
-WEBUI_IMAGE = os.getenv("HERMES_WEBUI_IMAGE", "ghcr.io/open-webui/open-webui:main")
+WEBUI_UPSTREAM_IMAGE = os.getenv("HERMES_WEBUI_IMAGE", "ghcr.io/open-webui/open-webui:main")
+OPENWEBUI_REF = os.getenv("HERMES_OPENWEBUI_REF", "v0.8.12")
+PATCHED_WEBUI_IMAGE = os.getenv("HERMES_WEBUI_PATCHED_IMAGE", f"hermes-openwebui-patched:{OPENWEBUI_REF}")
+USE_PATCHED_WEBUI = os.getenv("HERMES_WEBUI_USE_PATCHED", "true").strip().lower() not in {"0", "false", "no", "off"}
+WEBUI_AUTH = os.getenv("WEBUI_AUTH", "False")
 
 
 def log(message: str) -> None:
@@ -44,8 +50,22 @@ def state_init() -> None:
     OPEN_WEBUI_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def run(cmd: list[str], check: bool = True, capture: bool = False, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=check, text=True, capture_output=capture, cwd=ROOT_DIR, env=env)
+def run(
+    cmd: list[str],
+    *,
+    check: bool = True,
+    capture: bool = False,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        check=check,
+        text=True,
+        capture_output=capture,
+        cwd=str(cwd or ROOT_DIR),
+        env=env,
+    )
 
 
 def background(cmd: list[str], env: dict[str, str]) -> int:
@@ -69,7 +89,7 @@ def venv_python() -> Path:
 
 
 def find_python() -> str:
-    candidates = []
+    candidates: list[list[str]] = []
     if is_windows():
         candidates.extend([["py", "-3.11"], ["py", "-3"], ["python"]])
     else:
@@ -88,19 +108,31 @@ def python_cmd_args(spec: str) -> list[str]:
     return spec.split()
 
 
+def venv_has_pip() -> bool:
+    python = venv_python()
+    if not python.exists():
+        return False
+    completed = subprocess.run([str(python), "-m", "pip", "--version"], check=False, capture_output=True, text=True)
+    return completed.returncode == 0
+
+
 def ensure_venv() -> None:
-    if venv_python().exists():
+    if venv_python().exists() and venv_has_pip():
         return
+    if VENV_DIR.exists():
+        log("Recreating broken virtual environment")
+        shutil.rmtree(VENV_DIR)
     spec = find_python()
     log(f"Creating virtual environment with {spec}")
     run(python_cmd_args(spec) + ["-m", "venv", str(VENV_DIR)])
 
 
 def ensure_requirements() -> None:
+    ensure_venv()
     python = str(venv_python())
     log("Installing adapter dependencies")
-    run([python, "-m", "pip", "install", "--upgrade", "pip"], check=True)
-    run([python, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+    run([python, "-m", "pip", "install", "--upgrade", "pip"])
+    run([python, "-m", "pip", "install", "-r", "requirements.txt"])
 
 
 def hermes_candidates() -> list[Path]:
@@ -125,9 +157,7 @@ def detect_hermes() -> tuple[str, str]:
                 hermes_bin = str(candidate)
                 break
     if not hermes_bin:
-        raise SystemExit(
-            "Hermes CLI was not found. Set HERMES_BIN or install Hermes in ~/.hermes/hermes-agent/venv."
-        )
+        raise SystemExit("Hermes CLI was not found. Set HERMES_BIN or install Hermes in ~/.hermes/hermes-agent/venv.")
 
     hermes_workdir = os.getenv("HERMES_WORKDIR")
     if not hermes_workdir:
@@ -240,9 +270,42 @@ def docker_host_args() -> list[str]:
     return ["--add-host=host.docker.internal:host-gateway"]
 
 
+def image_exists(image: str) -> bool:
+    cmd = docker_cmd()
+    completed = subprocess.run([cmd, "image", "inspect", image], check=False, capture_output=True, text=True)
+    return completed.returncode == 0
+
+
+def desired_webui_image() -> str:
+    return PATCHED_WEBUI_IMAGE if USE_PATCHED_WEBUI else WEBUI_UPSTREAM_IMAGE
+
+
+def ensure_webui_image() -> str:
+    image = desired_webui_image()
+    if image_exists(image):
+        return image
+    if not USE_PATCHED_WEBUI:
+        return image
+    if not BUILD_PATCHED_WEBUI_SCRIPT.exists():
+        raise SystemExit(f"Patched Open WebUI builder missing: {BUILD_PATCHED_WEBUI_SCRIPT}")
+    log(f"Building patched Open WebUI image: {image}")
+    run([sys.executable, str(BUILD_PATCHED_WEBUI_SCRIPT), "--image", image])
+    if not image_exists(image):
+        raise SystemExit(f"Patched Open WebUI image was not created: {image}")
+    return image
+
+
+def install_workspace_assets() -> None:
+    if not INSTALL_WORKSPACE_ASSETS_SCRIPT.exists():
+        log("Workspace asset installer not found; skipping")
+        return
+    run([sys.executable, str(INSTALL_WORKSPACE_ASSETS_SCRIPT)])
+
+
 def start_openwebui() -> None:
     cmd = docker_cmd()
     wait_docker()
+    image = ensure_webui_image()
     subprocess.run([cmd, "rm", "-f", WEBUI_CONTAINER], check=False, capture_output=True, text=True)
     run_cmd = [
         cmd,
@@ -259,7 +322,7 @@ def start_openwebui() -> None:
         "-e",
         f"OPENAI_API_KEY={DEFAULT_API_KEY}",
         "-e",
-        "WEBUI_AUTH=False",
+        f"WEBUI_AUTH={WEBUI_AUTH}",
         "-v",
         f"{OPEN_WEBUI_DATA_DIR.resolve()}:/app/backend/data",
         "--name",
@@ -267,9 +330,11 @@ def start_openwebui() -> None:
         "--restart",
         "unless-stopped",
         *docker_host_args(),
-        WEBUI_IMAGE,
+        image,
     ]
     run(run_cmd)
+    wait_http(f"http://127.0.0.1:{WEBUI_PORT}/health", timeout=120)
+    install_workspace_assets()
 
 
 def stop_openwebui() -> None:
@@ -291,19 +356,34 @@ def stop_adapter() -> None:
 
 
 def status() -> None:
+    image = desired_webui_image()
     result = {
         "adapter_url": f"http://127.0.0.1:{ADAPTER_PORT}",
         "adapter_running": adapter_running(),
         "adapter_pid": read_pid(),
         "webui_url": f"http://127.0.0.1:{WEBUI_PORT}",
+        "webui_image": image,
+        "webui_image_present": False,
+        "patched_webui_enabled": USE_PATCHED_WEBUI,
     }
     try:
         cmd = docker_cmd()
+        result["webui_image_present"] = image_exists(image)
         completed = subprocess.run([cmd, "ps", "--filter", f"name={WEBUI_CONTAINER}", "--format", "{{.Names}}"], check=False, capture_output=True, text=True)
         result["webui_running"] = WEBUI_CONTAINER in completed.stdout.splitlines()
     except SystemExit:
         result["webui_running"] = False
     print(json.dumps(result, indent=2))
+
+
+def build_webui(force: bool = False) -> None:
+    wait_docker()
+    if not BUILD_PATCHED_WEBUI_SCRIPT.exists():
+        raise SystemExit(f"Patched Open WebUI builder missing: {BUILD_PATCHED_WEBUI_SCRIPT}")
+    cmd = [sys.executable, str(BUILD_PATCHED_WEBUI_SCRIPT), "--image", PATCHED_WEBUI_IMAGE]
+    if force:
+        cmd.append("--force")
+    run(cmd)
 
 
 def start(open_browser: bool = True) -> None:
@@ -325,7 +405,12 @@ def stop() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cross-platform Hermes + Open WebUI launcher")
-    parser.add_argument("command", nargs="?", default="start", choices=["start", "stop", "restart", "status"])
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="start",
+        choices=["start", "stop", "restart", "status", "build-webui", "rebuild-webui"],
+    )
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser after startup")
     args = parser.parse_args()
 
@@ -338,6 +423,10 @@ def main() -> None:
         start(open_browser=not args.no_browser)
     elif args.command == "status":
         status()
+    elif args.command == "build-webui":
+        build_webui(force=False)
+    elif args.command == "rebuild-webui":
+        build_webui(force=True)
 
 
 if __name__ == "__main__":

@@ -444,6 +444,21 @@ If you forget how it works, remember this simple mental model:
 In one line:
 - Open WebUI -> adapter -> Hermes CLI -> your real Hermes config
 
+## Repair/rebuild flow added
+
+The repo now includes a repeatable way to fix/rebuild everything after future updates.
+
+Use one of these:
+- Windows: `scripts\\fix_all.bat`
+- macOS/Linux: `./scripts/fix_all.sh`
+- CLI: `python launcher.py rebuild-webui && python launcher.py start`
+
+That flow is intended to:
+- rebuild the patched Open WebUI image
+- restart the live GUI container
+- restart the adapter if needed
+- reinstall the Hermes Workspace assets
+
 ## Summary
 
 You now have:
@@ -455,6 +470,8 @@ You now have:
 - persistent session mapping support
 - slash command support
 - a Windows launcher batch file
+- packaged Open WebUI frontend patch files
+- a rebuild/redeploy path for patched live Open WebUI
 - a full documentation file you can reopen later
 
-If you continue improving this, the best next changes are richer file/image support, better command UX, and a real GitHub remote once auth is confirmed.
+If you continue improving this, the best next changes are richer file/image support, better command UX, and more live coding-event rendering in the patched frontend.

@@ -48,15 +48,21 @@ Quick start
 - macOS/Linux: double-click start-hermes-openwebui.command
 - CLI on any OS: python launcher.py start
 
+Repair / rebuild everything after updates
+- Windows: scripts\fix_all.bat
+- macOS/Linux: ./scripts/fix_all.sh
+- CLI: python launcher.py rebuild-webui && python launcher.py start
+
 What the launcher does automatically
 1. Creates .venv if needed
 2. Installs/updates adapter dependencies
 3. Detects your Hermes CLI path automatically
-4. Starts the Hermes adapter on port 8001
-5. Starts Docker Desktop when possible
-6. Runs Open WebUI in Docker on port 8080
-7. Installs/updates the Hermes Control workspace tool in Open WebUI
-8. Opens http://127.0.0.1:8080
+4. Builds/uses the patched Open WebUI image when enabled
+5. Starts the Hermes adapter on port 8001
+6. Starts Docker Desktop when possible
+7. Runs Open WebUI in Docker on port 8080
+8. Installs/updates the Hermes Control workspace tool in Open WebUI
+9. Opens http://127.0.0.1:8080
 
 Requirements
 - Python 3

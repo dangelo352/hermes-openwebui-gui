@@ -254,7 +254,12 @@ def _extract_tool_trace(stdout: str) -> list[str]:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.startswith("📞 Tool") or stripped.startswith("✅ Tool") or stripped.startswith("Result:"):
+        if (
+            stripped.startswith("📞 Tool")
+            or stripped.startswith("✅ Tool")
+            or stripped.startswith("Args:")
+            or stripped.startswith("Result:")
+        ):
             traces.append(stripped)
     return traces
 

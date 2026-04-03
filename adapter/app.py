@@ -190,8 +190,22 @@ def _build_prompt(messages: list[ChatMessage]) -> str:
     return "\n".join(lines).strip()
 
 
+def _build_incremental_prompt(messages: list[ChatMessage]) -> str:
+    latest_user = _get_last_user_message(messages)
+    if latest_user:
+        return latest_user
+
+    for msg in reversed(messages):
+        content = _normalize_content(msg.content).strip()
+        if content:
+            return content
+
+    raise HTTPException(status_code=400, detail="No usable message content found")
+
+
 def _extract_text(stdout: str) -> str:
     text = stdout.strip()
+    text = re.sub(r"^↻ Resumed session [^\n]+\n\n", "", text)
     text = re.sub(r"^╭─ .*?╮\n", "", text, count=1, flags=re.DOTALL)
     text = re.sub(r"\n*session_id:\s*[^\n]+\s*$", "", text, flags=re.MULTILINE)
     return text.strip()
@@ -444,8 +458,8 @@ async def chat_completions(request: Request, payload: ChatCompletionRequest):
             return _build_streaming_response(text, completion_id, created, model)
         return _build_openai_response(text, completion_id, created, model)
 
-    prompt = _build_prompt(payload.messages)
     mapped_session = _get_mapped_session(context.get("chat_id"), context.get("user_id"))
+    prompt = _build_incremental_prompt(payload.messages) if mapped_session else _build_prompt(payload.messages)
     text, session_id = await asyncio.to_thread(_run_hermes_chat, prompt, mapped_session)
 
     if session_id and context.get("chat_id"):

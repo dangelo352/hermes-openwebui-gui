@@ -13,6 +13,7 @@ What gets reused from Hermes
 
 What is new now
 - Persistent Hermes session mapping keyed by Open WebUI chat id when Open WebUI forwards session headers
+- Token-saving resumed chat mode: once a Hermes session is mapped, the adapter sends only the latest user turn instead of rebuilding the entire transcript every time
 - Slash command support in the GUI for Hermes CLI passthrough and adapter session controls
 - Windows launcher batch file
 

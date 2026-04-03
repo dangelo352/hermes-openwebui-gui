@@ -106,10 +106,12 @@ This was added so Open WebUI chats can continue using the same Hermes session.
 Without mapping:
 - every request is just prompt reconstruction
 - continuity is approximate
+- token usage is higher because the full transcript keeps getting rebuilt
 
 With mapping:
 - the adapter can resume the same Hermes session for the same Open WebUI chat
 - chat continuity feels much more like real Hermes
+- after the first mapped turn, the adapter can send only the newest user turn instead of the whole transcript, which keeps token overhead much lower
 
 ### How it works
 

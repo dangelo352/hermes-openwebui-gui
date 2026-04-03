@@ -18,4 +18,6 @@ fi
 rsync -av "$PATCH_ROOT/" "$TARGET/src/"
 
 echo "Applied Hermes chat UI patches into: $TARGET"
-echo "Patched files include slash command overlay components for chat input."
+echo "Patched files include:"
+echo "- slash command overlay components for chat input"
+echo "- coding-response rendering blocks for Hermes tool activity traces"

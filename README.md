@@ -119,8 +119,9 @@ Workspace integration
   - arbitrary Hermes CLI passthrough via `/hermes ...`
 
 Chat UI integration
-- The repo now also contains source patches for Open WebUI chat input
+- The repo now also contains source patches for Open WebUI chat input and response rendering
 - These patches replace the default `/` prompt menu with a Hermes command overlay
+- They also add a custom coding-response block for Hermes tool activity traces
 - Apply them to an Open WebUI source checkout with:
   - macOS/Linux: `./scripts/apply_openwebui_chat_patches.sh /path/to/open-webui`
   - Windows: `scripts\apply_openwebui_chat_patches.bat C:\path\to\open-webui`

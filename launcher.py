@@ -45,6 +45,14 @@ def is_macos() -> bool:
     return sys.platform == "darwin"
 
 
+def is_wsl() -> bool:
+    return not is_windows() and (
+        "WSL_DISTRO_NAME" in os.environ
+        or "WSL_INTEROP" in os.environ
+        or "microsoft" in Path("/proc/version").read_text(encoding="utf-8", errors="ignore").lower()
+    )
+
+
 def state_init() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     OPEN_WEBUI_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -88,7 +96,7 @@ def venv_python() -> Path:
     return VENV_DIR / "bin" / "python"
 
 
-def find_python() -> str:
+def detect_host_python() -> list[str]:
     candidates: list[list[str]] = []
     if is_windows():
         candidates.extend([["py", "-3.11"], ["py", "-3"], ["python"]])
@@ -96,16 +104,12 @@ def find_python() -> str:
         candidates.extend([["python3.11"], ["python3"], ["python"]])
     for cmd in candidates:
         try:
-            completed = subprocess.run(cmd + ["--version"], capture_output=True, text=True, check=True)
-            if completed.stdout or completed.stderr:
-                return cmd[0] if len(cmd) == 1 else " ".join(cmd)
+            completed = subprocess.run(cmd + ["--version"], check=True, capture_output=True, text=True)
+            if completed.returncode == 0:
+                return cmd
         except Exception:
             continue
     raise SystemExit("Python 3 is required but was not found.")
-
-
-def python_cmd_args(spec: str) -> list[str]:
-    return spec.split()
 
 
 def venv_has_pip() -> bool:
@@ -122,9 +126,9 @@ def ensure_venv() -> None:
     if VENV_DIR.exists():
         log("Recreating broken virtual environment")
         shutil.rmtree(VENV_DIR)
-    spec = find_python()
-    log(f"Creating virtual environment with {spec}")
-    run(python_cmd_args(spec) + ["-m", "venv", str(VENV_DIR)])
+    host_python = detect_host_python()
+    log(f"Creating virtual environment with {' '.join(host_python)}")
+    run(host_python + ["-m", "venv", str(VENV_DIR)])
 
 
 def ensure_requirements() -> None:
@@ -208,11 +212,18 @@ def kill_pid(pid: int) -> None:
         os.kill(pid, signal.SIGTERM)
 
 
+def ensure_launcher_ready() -> tuple[str, str]:
+    state_init()
+    ensure_requirements()
+    hermes_bin, hermes_workdir = detect_hermes()
+    return hermes_bin, hermes_workdir
+
+
 def start_adapter() -> None:
     if adapter_running():
         log(f"Adapter already running on http://127.0.0.1:{ADAPTER_PORT}")
         return
-    hermes_bin, hermes_workdir = detect_hermes()
+    hermes_bin, hermes_workdir = ensure_launcher_ready()
     env = os.environ.copy()
     env.update(
         {
@@ -230,15 +241,48 @@ def start_adapter() -> None:
     wait_http(f"http://127.0.0.1:{ADAPTER_PORT}/health", timeout=60)
 
 
-def docker_cmd() -> str:
+def docker_candidates() -> list[str]:
+    env_value = os.getenv("HERMES_DOCKER_BIN")
+    candidates: list[str] = []
+    if env_value:
+        candidates.append(env_value)
+
     found = shutil.which("docker")
     if found:
-        return found
+        candidates.append(found)
+
     if is_windows():
-        docker_exe = Path("C:/Program Files/Docker/Docker/resources/bin/docker.exe")
-        if docker_exe.exists():
-            return str(docker_exe)
-    raise SystemExit("Docker is required but was not found in PATH.")
+        candidates.extend(
+            [
+                "C:/Program Files/Docker/Docker/resources/bin/docker.exe",
+                "C:/Program Files/Docker/Docker/resources/bin/docker",
+            ]
+        )
+    elif is_wsl():
+        candidates.extend(
+            [
+                "/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe",
+                "/mnt/c/Program Files/Docker/Docker/resources/bin/docker",
+            ]
+        )
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        deduped.append(candidate)
+    return deduped
+
+
+def docker_cmd() -> str:
+    for candidate in docker_candidates():
+        if Path(candidate).exists() or shutil.which(candidate):
+            return candidate
+    raise SystemExit(
+        "Docker is required but was not found. Install Docker Desktop/Docker Engine or set HERMES_DOCKER_BIN."
+    )
 
 
 def start_docker_desktop() -> None:
@@ -250,6 +294,14 @@ def start_docker_desktop() -> None:
         docker_app = Path("/Applications/Docker.app")
         if docker_app.exists():
             subprocess.Popen(["open", "-a", "Docker"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif is_wsl():
+        cmd_exe = shutil.which("cmd.exe") or "/mnt/c/WINDOWS/system32/cmd.exe"
+        if Path(cmd_exe).exists() or shutil.which("cmd.exe"):
+            subprocess.Popen(
+                [cmd_exe, "/c", "start", "", "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
 
 def wait_docker(timeout: int = 120) -> None:
@@ -265,7 +317,7 @@ def wait_docker(timeout: int = 120) -> None:
 
 
 def docker_host_args() -> list[str]:
-    if is_windows() or is_macos():
+    if is_windows() or is_macos() or is_wsl():
         return []
     return ["--add-host=host.docker.internal:host-gateway"]
 
@@ -296,6 +348,7 @@ def ensure_webui_image() -> str:
 
 
 def install_workspace_assets() -> None:
+    ensure_launcher_ready()
     if not INSTALL_WORKSPACE_ASSETS_SCRIPT.exists():
         log("Workspace asset installer not found; skipping")
         return
@@ -303,6 +356,7 @@ def install_workspace_assets() -> None:
 
 
 def start_openwebui() -> None:
+    ensure_launcher_ready()
     cmd = docker_cmd()
     wait_docker()
     image = ensure_webui_image()
@@ -355,6 +409,21 @@ def stop_adapter() -> None:
         ADAPTER_PID.unlink(missing_ok=True)
 
 
+def prepare() -> None:
+    hermes_bin, hermes_workdir = ensure_launcher_ready()
+    summary = {
+        "root_dir": str(ROOT_DIR),
+        "venv_python": str(venv_python()),
+        "hermes_bin": hermes_bin,
+        "hermes_workdir": hermes_workdir,
+        "docker_bin": docker_cmd() if any(Path(c).exists() or shutil.which(c) for c in docker_candidates()) else None,
+        "adapter_url": f"http://127.0.0.1:{ADAPTER_PORT}",
+        "webui_url": f"http://127.0.0.1:{WEBUI_PORT}",
+        "patched_webui_enabled": USE_PATCHED_WEBUI,
+    }
+    print(json.dumps(summary, indent=2))
+
+
 def status() -> None:
     image = desired_webui_image()
     result = {
@@ -365,9 +434,11 @@ def status() -> None:
         "webui_image": image,
         "webui_image_present": False,
         "patched_webui_enabled": USE_PATCHED_WEBUI,
+        "docker_bin": None,
     }
     try:
         cmd = docker_cmd()
+        result["docker_bin"] = cmd
         result["webui_image_present"] = image_exists(image)
         completed = subprocess.run([cmd, "ps", "--filter", f"name={WEBUI_CONTAINER}", "--format", "{{.Names}}"], check=False, capture_output=True, text=True)
         result["webui_running"] = WEBUI_CONTAINER in completed.stdout.splitlines()
@@ -386,10 +457,16 @@ def build_webui(force: bool = False) -> None:
     run(cmd)
 
 
+def git_pull_ff_only() -> None:
+    if not (ROOT_DIR / ".git").exists():
+        log("No git repository found here; skipping git pull")
+        return
+    log("Running git pull --ff-only")
+    run(["git", "pull", "--ff-only"])
+
+
 def start(open_browser: bool = True) -> None:
-    state_init()
-    ensure_venv()
-    ensure_requirements()
+    ensure_launcher_ready()
     start_adapter()
     start_openwebui()
     log(f"Open WebUI ready at http://127.0.0.1:{WEBUI_PORT}")
@@ -403,15 +480,36 @@ def stop() -> None:
     log("Stopped Hermes adapter and Open WebUI")
 
 
+def update(open_browser: bool = True, skip_git_pull: bool = False) -> None:
+    if not skip_git_pull:
+        git_pull_ff_only()
+    if USE_PATCHED_WEBUI:
+        build_webui(force=True)
+    start(open_browser=open_browser)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cross-platform Hermes + Open WebUI launcher")
     parser.add_argument(
         "command",
         nargs="?",
         default="start",
-        choices=["start", "stop", "restart", "status", "build-webui", "rebuild-webui"],
+        choices=[
+            "start",
+            "stop",
+            "restart",
+            "status",
+            "prepare",
+            "start-adapter",
+            "start-webui",
+            "install-workspace-assets",
+            "build-webui",
+            "rebuild-webui",
+            "update",
+        ],
     )
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser after startup")
+    parser.add_argument("--skip-git-pull", action="store_true", help="For update: skip git pull and only rebuild/restart")
     args = parser.parse_args()
 
     if args.command == "start":
@@ -423,10 +521,20 @@ def main() -> None:
         start(open_browser=not args.no_browser)
     elif args.command == "status":
         status()
+    elif args.command == "prepare":
+        prepare()
+    elif args.command == "start-adapter":
+        start_adapter()
+    elif args.command == "start-webui":
+        start_openwebui()
+    elif args.command == "install-workspace-assets":
+        install_workspace_assets()
     elif args.command == "build-webui":
         build_webui(force=False)
     elif args.command == "rebuild-webui":
         build_webui(force=True)
+    elif args.command == "update":
+        update(open_browser=not args.no_browser, skip_git_pull=args.skip_git_pull)
 
 
 if __name__ == "__main__":

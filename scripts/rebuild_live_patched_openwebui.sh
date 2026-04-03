@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-python3 scripts/rebuild_live_patched_openwebui.py
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 launcher.py rebuild-webui
+elif command -v python >/dev/null 2>&1; then
+  exec python launcher.py rebuild-webui
+else
+  echo "Python 3 is required but was not found." >&2
+  exit 1
+fi

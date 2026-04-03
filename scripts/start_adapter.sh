@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mkdir -p state
-source .venv/bin/activate
-export HERMES_BIN="${HERMES_BIN:-/root/.hermes/hermes-agent/venv/bin/hermes}"
-export HERMES_WORKDIR="${HERMES_WORKDIR:-/root/.hermes/hermes-agent}"
-export HERMES_OPENAI_MODEL="${HERMES_OPENAI_MODEL:-hermes-gui}"
-export HERMES_OPENAI_API_KEY="${HERMES_OPENAI_API_KEY:-hermes-local}"
-exec uvicorn adapter.app:app --host 0.0.0.0 --port 8001
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 launcher.py start-adapter
+elif command -v python >/dev/null 2>&1; then
+  exec python launcher.py start-adapter
+else
+  echo "Python 3 is required but was not found." >&2
+  exit 1
+fi

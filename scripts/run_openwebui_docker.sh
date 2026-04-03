@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT_DIR"
-
-python3 scripts/build_patched_openwebui.py
-python3 launcher.py restart --no-browser
-
-echo "Open WebUI container started."
-echo "URL: http://127.0.0.1:8080"
-echo "Workspace tool installed: Hermes Control"
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 launcher.py start-webui --no-browser
+elif command -v python >/dev/null 2>&1; then
+  exec python launcher.py start-webui --no-browser
+else
+  echo "Python 3 is required but was not found." >&2
+  exit 1
+fi

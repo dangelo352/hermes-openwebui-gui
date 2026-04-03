@@ -15,10 +15,14 @@ What gets reused from Hermes
 What is new now
 - Cross-platform Python launcher: launcher.py
 - Windows double-click starter: start-hermes-openwebui.bat
-- macOS/Linux double-click starter: start-hermes-openwebui.command
+- Linux shell starter: start-hermes-openwebui.sh
+- macOS double-click starter: start-hermes-openwebui.command
+- Windows update/rebuild starter: update-hermes-openwebui.bat
+- Linux update/rebuild starter: update-hermes-openwebui.sh
+- macOS update/rebuild starter: update-hermes-openwebui.command
 - Automatic adapter venv bootstrap and dependency install
-- Automatic Hermes CLI path detection on macOS, Windows, and Linux
-- Automatic Docker Desktop startup on macOS and Windows
+- Automatic Hermes CLI path detection on macOS, Windows, Linux, and WSL
+- Automatic Docker Desktop startup on macOS, Windows, and WSL when available
 - Open WebUI container startup with host routing that also works on Linux
 - Persistent Hermes session mapping keyed by Open WebUI chat id
 - Slash command support in the GUI for Hermes CLI passthrough and adapter session controls
@@ -38,7 +42,11 @@ Project layout
 - launcher.py                                      Cross-platform all-in-one launcher
 - requirements.txt                                 Adapter dependencies
 - start-hermes-openwebui.bat                       Windows one-click launcher
-- start-hermes-openwebui.command                   macOS/Linux one-click launcher
+- start-hermes-openwebui.sh                        Linux shell launcher
+- start-hermes-openwebui.command                   macOS double-click launcher
+- update-hermes-openwebui.bat                      Windows git-pull/rebuild/start launcher
+- update-hermes-openwebui.sh                       Linux git-pull/rebuild/start launcher
+- update-hermes-openwebui.command                  macOS git-pull/rebuild/start launcher
 - scripts/install_openwebui_workspace_assets.py    Creates/updates the Hermes Control tool in Workspace
 - scripts/run_openwebui_docker.sh                  Starts Open WebUI and installs workspace assets
 - scripts/apply_openwebui_chat_patches.sh          Applies chat UI patches to an Open WebUI source checkout
@@ -50,13 +58,20 @@ Project layout
 
 Quick start
 - Windows: double-click start-hermes-openwebui.bat
-- macOS/Linux: double-click start-hermes-openwebui.command
+- Linux: run ./start-hermes-openwebui.sh
+- macOS: double-click start-hermes-openwebui.command
 - CLI on any OS: python launcher.py start
+
+Update after pulling latest changes
+- Windows: double-click update-hermes-openwebui.bat
+- Linux: run ./update-hermes-openwebui.sh
+- macOS: double-click update-hermes-openwebui.command
+- CLI on any OS: python launcher.py update
 
 Repair / rebuild everything after updates
 - Windows: scripts\fix_all.bat
 - macOS/Linux: ./scripts/fix_all.sh
-- CLI: python launcher.py rebuild-webui && python launcher.py start
+- CLI: python launcher.py update --skip-git-pull
 
 What the launcher does automatically
 1. Creates .venv if needed
@@ -75,12 +90,18 @@ Requirements
 - Hermes CLI already installed locally
 
 Useful commands
+- python launcher.py prepare
 - python launcher.py start
 - python launcher.py stop
 - python launcher.py restart
 - python launcher.py status
+- python launcher.py start-adapter
+- python launcher.py start-webui
+- python launcher.py install-workspace-assets
 - python launcher.py build-webui
 - python launcher.py rebuild-webui
+- python launcher.py update
+- python launcher.py update --skip-git-pull
 - python launcher.py start --no-browser
 
 Environment overrides

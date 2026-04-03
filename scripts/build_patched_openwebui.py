@@ -5,6 +5,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,62 @@ EXCLUDES = {".git", "node_modules", ".venv", "backend/data", "build", ".svelte-k
 
 def log(message: str) -> None:
     print(f"[build-patched-openwebui] {message}", flush=True)
+
+
+def is_windows() -> bool:
+    return sys.platform.startswith("win")
+
+
+def is_wsl() -> bool:
+    return not is_windows() and (
+        "WSL_DISTRO_NAME" in os.environ
+        or "WSL_INTEROP" in os.environ
+        or "microsoft" in Path("/proc/version").read_text(encoding="utf-8", errors="ignore").lower()
+    )
+
+
+def docker_candidates() -> list[str]:
+    env_value = os.getenv("HERMES_DOCKER_BIN")
+    candidates: list[str] = []
+    if env_value:
+        candidates.append(env_value)
+
+    found = shutil.which("docker")
+    if found:
+        candidates.append(found)
+
+    if is_windows():
+        candidates.extend(
+            [
+                "C:/Program Files/Docker/Docker/resources/bin/docker.exe",
+                "C:/Program Files/Docker/Docker/resources/bin/docker",
+            ]
+        )
+    elif is_wsl():
+        candidates.extend(
+            [
+                "/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe",
+                "/mnt/c/Program Files/Docker/Docker/resources/bin/docker",
+            ]
+        )
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        deduped.append(candidate)
+    return deduped
+
+
+def docker_cmd() -> str:
+    for candidate in docker_candidates():
+        if Path(candidate).exists() or shutil.which(candidate):
+            return candidate
+    raise SystemExit(
+        "Docker is required but was not found. Install Docker Desktop/Docker Engine or set HERMES_DOCKER_BIN."
+    )
 
 
 def run(cmd: list[str], *, cwd: Path | None = None, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -66,7 +123,7 @@ def apply_patch_overlay() -> None:
 
 
 def image_exists(image: str) -> bool:
-    completed = run(["docker", "image", "inspect", image], check=False, capture=True)
+    completed = run([docker_cmd(), "image", "inspect", image], check=False, capture=True)
     return completed.returncode == 0
 
 
@@ -90,7 +147,7 @@ def main() -> int:
     sync_tree(CACHE_DIR, BUILD_DIR)
     log("Applying Hermes Open WebUI patch overlay")
     apply_patch_overlay()
-    run(["docker", "build", "-t", args.image, "."], cwd=BUILD_DIR)
+    run([docker_cmd(), "build", "-t", args.image, "."], cwd=BUILD_DIR)
     log(f"Built patched Open WebUI image: {args.image}")
     return 0
 

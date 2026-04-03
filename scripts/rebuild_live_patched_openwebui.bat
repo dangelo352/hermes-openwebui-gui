@@ -1,3 +1,18 @@
 @echo off
 setlocal
-wsl.exe -d Ubuntu bash -lc "cd /root/hermes-openwebui-gui && python3 scripts/rebuild_live_patched_openwebui.py"
+cd /d "%~dp0\.."
+
+where py >nul 2>nul
+if %errorlevel%==0 (
+  py -3 launcher.py rebuild-webui
+  exit /b %errorlevel%
+)
+
+where python >nul 2>nul
+if %errorlevel%==0 (
+  python launcher.py rebuild-webui
+  exit /b %errorlevel%
+)
+
+echo Python 3 is required but was not found.
+exit /b 1

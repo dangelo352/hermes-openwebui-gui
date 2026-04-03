@@ -17,7 +17,8 @@ What is new now
 - Windows double-click starter: start-hermes-openwebui.bat
 - Linux shell starter: start-hermes-openwebui.sh
 - macOS double-click starter: start-hermes-openwebui.command
-- Windows update/rebuild starter: update-hermes-openwebui.bat
+- Windows easy update/rebuild starter: update-webui-easy.bat
+- Windows compatibility update/rebuild starter: update-hermes-openwebui.bat
 - Linux update/rebuild starter: update-hermes-openwebui.sh
 - macOS update/rebuild starter: update-hermes-openwebui.command
 - Automatic adapter venv bootstrap and dependency install
@@ -44,7 +45,8 @@ Project layout
 - start-hermes-openwebui.bat                       Windows one-click launcher
 - start-hermes-openwebui.sh                        Linux shell launcher
 - start-hermes-openwebui.command                   macOS double-click launcher
-- update-hermes-openwebui.bat                      Windows git-pull/rebuild/start launcher
+- update-webui-easy.bat                            Windows easy git-pull/rebuild/start launcher
+- update-hermes-openwebui.bat                      Windows compatibility git-pull/rebuild/start launcher
 - update-hermes-openwebui.sh                       Linux git-pull/rebuild/start launcher
 - update-hermes-openwebui.command                  macOS git-pull/rebuild/start launcher
 - scripts/install_openwebui_workspace_assets.py    Creates/updates the Hermes Control tool in Workspace
@@ -63,13 +65,15 @@ Quick start
 - CLI on any OS: python launcher.py start
 
 Update after pulling latest changes
-- Windows: double-click update-hermes-openwebui.bat
+- Windows: double-click update-webui-easy.bat
+- Windows compatibility launcher: double-click update-hermes-openwebui.bat
 - Linux: run ./update-hermes-openwebui.sh
 - macOS: double-click update-hermes-openwebui.command
 - CLI on any OS: python launcher.py update
 
 Repair / rebuild everything after updates
-- Windows: scripts\fix_all.bat
+- Windows: double-click fix-hermes-openwebui.bat
+- Windows compatibility script: scripts\fix_all.bat
 - macOS/Linux: ./scripts/fix_all.sh
 - CLI: python launcher.py update --skip-git-pull
 

@@ -241,10 +241,42 @@ def _build_incremental_prompt(messages: list[ChatMessage]) -> str:
             return content
     raise HTTPException(status_code=400, detail="No usable message content found")
 
+def _extract_box_content(stdout: str) -> str | None:
+    box_match = re.search(r"╭─ ⚕ Hermes .*?╮\n(.*?)\n╰──────────────────────────────────────────────────────────────────────────────╯", stdout, re.DOTALL)
+    return box_match.group(1).strip() if box_match else None
+
+
+def _extract_tool_trace(stdout: str) -> list[str]:
+    content = _extract_box_content(stdout)
+    source = content.splitlines() if content else stdout.splitlines()
+    traces: list[str] = []
+    for line in source:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("📞 Tool") or stripped.startswith("✅ Tool") or stripped.startswith("Result:"):
+            traces.append(stripped)
+    return traces
+
 
 def _extract_text(stdout: str) -> str:
+    content = _extract_box_content(stdout)
+    if content:
+        filtered: list[str] = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("📞 Tool") or stripped.startswith("✅ Tool") or stripped.startswith("Result:"):
+                continue
+            if stripped.startswith("🎉 Conversation completed"):
+                continue
+            filtered.append(stripped)
+        return "\n".join(filtered).strip()
+
     text = stdout.strip()
     text = re.sub(r"^↻ Resumed session [^\n]+\n\n", "", text)
+    text = re.sub(r"^╭─ .*?╮\n", "", text, count=1, flags=re.DOTALL)
     text = re.sub(r"\n*session_id:\s*[^\n]+\s*$", "", text, flags=re.MULTILINE)
     return text.strip()
 
@@ -252,6 +284,26 @@ def _extract_text(stdout: str) -> str:
 def _extract_session_id(stdout: str) -> str | None:
     match = re.search(r"session_id:\s*([^\s]+)", stdout)
     return match.group(1) if match else None
+
+
+def _should_show_trace(prompt: str) -> bool:
+    lowered = prompt.lower()
+    coding_markers = [
+        "```",
+        "code",
+        "coding",
+        "implement",
+        "fix",
+        "refactor",
+        "bug",
+        "test",
+        "write a file",
+        "edit",
+        "patch",
+        "function",
+        "class",
+    ]
+    return any(marker in lowered for marker in coding_markers)
 
 
 def _run_subprocess(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
@@ -272,7 +324,12 @@ def _run_subprocess(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
 
 
 def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[str, str | None]:
-    cmd = [HERMES_BIN, "chat", "-Q", "--source", HERMES_SOURCE]
+    show_trace = _should_show_trace(prompt)
+    cmd = [HERMES_BIN, "chat", "--source", HERMES_SOURCE]
+    if not show_trace:
+        cmd.append("-Q")
+    else:
+        cmd.append("-v")
     if resume_session:
         cmd.extend(["--resume", resume_session])
     cmd.extend(["-q", prompt])
@@ -283,6 +340,10 @@ def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[st
     text = _extract_text(result.stdout)
     if not text:
         raise HTTPException(status_code=500, detail="Hermes returned an empty response")
+    if show_trace:
+        trace_lines = _extract_tool_trace(result.stdout)
+        if trace_lines:
+            text = "Tool activity:\n" + "\n".join(trace_lines) + "\n\nResult:\n" + text
     return text, _extract_session_id(result.stdout)
 
 

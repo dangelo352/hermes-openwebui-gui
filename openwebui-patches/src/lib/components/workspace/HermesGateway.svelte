@@ -7,7 +7,9 @@
 		runHermesCommand,
 		getHermesConfigFiles,
 		updateHermesEnvKey,
-		updateHermesConfigPath
+		updateHermesConfigPath,
+		getHermesUpdateRebuildStatus,
+		triggerHermesUpdateRebuild
 	} from '$lib/apis/hermes';
 	import Search from '../icons/Search.svelte';
 	import Spinner from '../common/Spinner.svelte';
@@ -102,6 +104,7 @@
 	let activeTab = 'overview';
 	let commandInput = '/gateway status';
 	let commandResult: CommandResult | null = null;
+	let updateStatus: any = null;
 	let channelQuery = '';
 	let skillsQuery = '';
 	let skillsSource = 'official';
@@ -134,9 +137,10 @@
 	const refresh = async () => {
 		loading = true;
 		try {
-			const [overviewPayload, configPayload] = await Promise.all([getHermesOverview(), getHermesConfigFiles()]);
+			const [overviewPayload, configPayload, updatePayload] = await Promise.all([getHermesOverview(), getHermesConfigFiles(), getHermesUpdateRebuildStatus()]);
 			overview = overviewPayload;
 			configFiles = configPayload;
+			updateStatus = updatePayload;
 		} catch (error) {
 			toast.error(`${error}`);
 		} finally {
@@ -189,6 +193,18 @@
 			return;
 		}
 		await runCommand(`skills install ${installIdentifier.trim()} --yes`, { target: 'skills', refreshAfter: true });
+	};
+
+	const startUpdateRebuild = async () => {
+		runningCommand = true;
+		try {
+			updateStatus = await triggerHermesUpdateRebuild(true);
+			toast.success('Update + rebuild started. Open WebUI may restart while the image rebuilds.');
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			runningCommand = false;
+		}
 	};
 
 	const filteredChannels = () => {
@@ -307,6 +323,9 @@
 						<div class="self-center font-medium line-clamp-1">{action.label}</div>
 					</button>
 				{/each}
+				<button class="flex text-xs items-center space-x-1 px-3 py-1.5 rounded-xl bg-emerald-600 text-white transition disabled:opacity-50" on:click={startUpdateRebuild} disabled={runningCommand || saving || updateStatus?.running}>
+					<div class="self-center font-medium line-clamp-1">{updateStatus?.running ? 'Rebuilding…' : 'Update + Rebuild'}</div>
+				</button>
 			</div>
 		</div>
 
@@ -335,6 +354,11 @@
 							<div class="text-xs uppercase tracking-wide text-gray-500">Current health</div>
 							<div class="mt-2 flex items-center gap-2"><span class="inline-block h-2.5 w-2.5 rounded-full {overview.gateway?.exit_code === 0 ? 'bg-emerald-500' : 'bg-amber-500'}"></span><span class="text-lg font-semibold">{overview.gateway?.exit_code === 0 ? 'Gateway online' : 'Needs attention'}</span></div>
 							<div class="mt-1 text-sm text-gray-500">Adapter: {overview.health?.status ?? 'unknown'} · Model: {overview.health?.model}</div>
+						</div>
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white/80 dark:bg-black/30 px-4 py-3 min-w-[220px]">
+							<div class="text-xs uppercase tracking-wide text-gray-500">Updater</div>
+							<div class="mt-2 flex items-center gap-2"><span class="inline-block h-2.5 w-2.5 rounded-full {updateStatus?.running ? 'bg-sky-500 animate-pulse' : 'bg-gray-400'}"></span><span class="text-lg font-semibold">{updateStatus?.running ? 'Rebuild running' : 'Idle'}</span></div>
+							<div class="mt-1 text-sm text-gray-500 font-mono truncate">{updateStatus?.log_path ?? 'state/update-rebuild.log'}</div>
 						</div>
 					</div>
 				</div>

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCH_ROOT = ROOT / "openwebui-patches" / "src"
+PATCH_ROOT = ROOT / "openwebui-patches"
 CACHE_DIR = ROOT / "state" / "open-webui-source"
 BUILD_DIR = ROOT / "state" / "open-webui-build"
 DEFAULT_REPO = os.getenv("HERMES_OPENWEBUI_REPO", "https://github.com/open-webui/open-webui.git")
@@ -110,11 +110,9 @@ def ensure_source(repo: str, ref: str) -> None:
 def apply_patch_overlay() -> None:
     if not PATCH_ROOT.exists():
         raise SystemExit(f"Missing patch tree: {PATCH_ROOT}")
-    src_root = BUILD_DIR / "src"
-    src_root.mkdir(parents=True, exist_ok=True)
     for item in PATCH_ROOT.rglob("*"):
         rel = item.relative_to(PATCH_ROOT)
-        target = src_root / rel
+        target = BUILD_DIR / rel
         if item.is_dir():
             target.mkdir(parents=True, exist_ok=True)
         else:

@@ -1,6 +1,7 @@
-const HERMES_API_BASE_URL = (globalThis?.location?.hostname ?? '127.0.0.1') === 'localhost'
-	? 'http://localhost:8001/v1/hermes'
-	: 'http://127.0.0.1:8001/v1/hermes';
+const HERMES_API_ROOT = (globalThis?.location?.hostname ?? '127.0.0.1') === 'localhost'
+	? 'http://localhost:8001/v1'
+	: 'http://127.0.0.1:8001/v1';
+const HERMES_API_BASE_URL = `${HERMES_API_ROOT}/hermes`;
 
 const parseJson = async (res: Response) => {
 	if (!res.ok) {
@@ -66,6 +67,28 @@ export const updateHermesConfigPath = async (path: string, value: any) => {
 			'Content-Type': 'application/json'
 		},
 		body: JSON.stringify({ path, value })
+	});
+	return await parseJson(res);
+};
+
+export const getHermesUpdateRebuildStatus = async () => {
+	const res = await fetch(`${HERMES_API_ROOT}/admin/update-rebuild`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json'
+		}
+	});
+	return await parseJson(res);
+};
+
+export const triggerHermesUpdateRebuild = async (git_pull = true) => {
+	const res = await fetch(`${HERMES_API_ROOT}/admin/update-rebuild`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ git_pull })
 	});
 	return await parseJson(res);
 };

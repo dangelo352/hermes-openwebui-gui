@@ -24,6 +24,9 @@ Project layout
 - adapter/app.py                        FastAPI OpenAI-compatible wrapper
 - requirements.txt                     Adapter dependencies
 - .env.openwebui                       Open WebUI environment preconfigured for the adapter
+- scripts/install_all.sh               Bootstraps the adapter environment automatically
+- scripts/run_openwebui_docker.sh      Starts Open WebUI in Docker Desktop from WSL
+- scripts/install_windows_wsl.sh       Syncs the project to the Windows desktop copy
 - scripts/start_adapter.sh             Starts the Hermes adapter on port 8001
 - scripts/start_openwebui.sh           Starts Open WebUI on port 8080
 - windows-start-hermes-openwebui.bat   Windows one-click launcher
@@ -40,19 +43,21 @@ How it works
 7. The adapter returns an OpenAI-compatible response back to Open WebUI.
 
 Local setup
-1. Create the adapter venv and install deps:
-   uv venv --python 3.11 .venv
-   . .venv/bin/activate
-   uv pip install -r requirements.txt
+1. Bootstrap everything needed for the adapter:
+   ./scripts/install_all.sh
 
 2. Start the adapter:
    ./scripts/start_adapter.sh
 
 3. Run Open WebUI in Docker with session headers forwarded:
-   docker run -d -p 8080:8080 -e ENABLE_OPENAI_API=True -e ENABLE_FORWARD_USER_INFO_HEADERS=True -e OPENAI_API_BASE_URL=http://host.docker.internal:8001/v1 -e OPENAI_API_KEY=hermes-local -e WEBUI_AUTH=False -v hermes-open-webui-data:/app/backend/data --name hermes-open-webui --restart unless-stopped ghcr.io/open-webui/open-webui:main
+   ./scripts/run_openwebui_docker.sh
 
 4. Open the GUI:
    http://127.0.0.1:8080
+
+Fastest Windows path
+- Double-click:
+  windows-start-hermes-openwebui.bat
 
 Slash commands in Open WebUI
 - /help
@@ -88,7 +93,7 @@ Important limitation
 - This is an adapter around Hermes CLI, not a native Hermes web app. So tool usage, memory, skills, and settings are preserved through the existing Hermes runtime, but Open WebUI conversations are translated into Hermes prompts instead of using a first-party Hermes HTTP server.
 
 Recommended next improvements
-- Push to a GitHub repo once GitHub auth is confirmed
 - Add richer multimodal handling for images/files
 - Add richer command metadata/help output
 - Add auth for the adapter if exposing beyond localhost
+- Optionally add frontend slash-command autocomplete directly into a custom Open WebUI fork

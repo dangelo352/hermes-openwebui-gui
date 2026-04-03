@@ -13,7 +13,7 @@ if errorlevel 1 (
 )
 
 echo Starting Hermes adapter inside WSL...
-wsl.exe -d Ubuntu bash -lc "cd /root/hermes-openwebui-gui && mkdir -p state && if [ ! -d .venv ]; then uv venv --python 3.11 .venv && . .venv/bin/activate && uv pip install -r requirements.txt; fi && nohup ./scripts/start_adapter.sh >/tmp/hermes-openwebui-adapter.log 2>&1 &"
+wsl.exe -d Ubuntu bash -lc "cd /root/hermes-openwebui-gui && ./scripts/install_all.sh && nohup ./scripts/start_adapter.sh >/tmp/hermes-openwebui-adapter.log 2>&1 &"
 
 echo Recreating Open WebUI container with forwarded session headers enabled...
 cmd /c docker rm -f hermes-open-webui >nul 2>nul

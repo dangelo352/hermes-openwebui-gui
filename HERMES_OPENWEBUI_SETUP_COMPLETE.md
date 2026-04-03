@@ -42,6 +42,12 @@ That project contains:
   - Python dependencies for the adapter
 - `.env.openwebui`
   - Open WebUI environment values pointing it to the adapter
+- `scripts/install_all.sh`
+  - Bootstraps the adapter environment automatically
+- `scripts/run_openwebui_docker.sh`
+  - Starts Open WebUI in Docker Desktop from WSL
+- `scripts/install_windows_wsl.sh`
+  - Syncs the repo to the Windows desktop copy
 - `scripts/start_adapter.sh`
   - Starts the adapter locally on port 8001
 - `scripts/start_openwebui.sh`
@@ -385,22 +391,17 @@ Create:
 - `.env.openwebui`
 - helper scripts and README
 
-### Step 4: install adapter dependencies
+### Step 4: bootstrap the adapter environment automatically
 - `cd /root/hermes-openwebui-gui`
-- `uv venv --python 3.11 .venv`
-- `. .venv/bin/activate`
-- `uv pip install -r requirements.txt`
+- `./scripts/install_all.sh`
 
 ### Step 5: start adapter
 - `./scripts/start_adapter.sh`
 
-### Step 6: launch Docker Desktop on Windows if needed
-- `cmd.exe /c start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"`
+### Step 6: launch Open WebUI in Docker
+- `./scripts/run_openwebui_docker.sh`
 
-### Step 7: run Open WebUI container
-- `cmd.exe /c docker run -d -p 8080:8080 -e ENABLE_OPENAI_API=True -e ENABLE_FORWARD_USER_INFO_HEADERS=True -e OPENAI_API_BASE_URL=http://host.docker.internal:8001/v1 -e OPENAI_API_KEY=hermes-local -e WEBUI_AUTH=False -v hermes-open-webui-data:/app/backend/data --name hermes-open-webui --restart unless-stopped ghcr.io/open-webui/open-webui:main`
-
-### Step 8: open browser
+### Step 7: open browser
 - `http://127.0.0.1:8080`
 
 ## How to remember this setup later

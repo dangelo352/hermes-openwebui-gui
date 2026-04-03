@@ -355,15 +355,39 @@ def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[st
 def _format_command_result(result: subprocess.CompletedProcess[str], cmd: list[str]) -> str:
     out = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
-    parts = [f"$ {' '.join(shlex.quote(part) for part in cmd[1:])}", f"exit_code: {result.returncode}"]
-    if out:
-        parts.append("stdout:")
-        parts.append(out)
-    if err:
-        parts.append("stderr:")
-        parts.append(err)
-    return "\n".join(parts).strip()
+    rendered_cmd = ' '.join(shlex.quote(part) for part in cmd[1:])
 
+    parts = [
+        "Command",
+        "```bash",
+        f"$ {rendered_cmd}",
+        "```",
+        f"Exit code: `{result.returncode}`",
+    ]
+
+    if out:
+        parts.extend(
+            [
+                "",
+                "Stdout",
+                "```text",
+                out,
+                "```",
+            ]
+        )
+
+    if err:
+        parts.extend(
+            [
+                "",
+                "Stderr",
+                "```text",
+                err,
+                "```",
+            ]
+        )
+
+    return "\n".join(parts).strip()
 
 def _slash_help(compact: bool = False) -> str:
     if compact:

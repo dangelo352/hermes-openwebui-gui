@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+mkdir -p state
 source .venv/bin/activate
 export HERMES_BIN="${HERMES_BIN:-/root/.hermes/hermes-agent/venv/bin/hermes}"
 export HERMES_WORKDIR="${HERMES_WORKDIR:-/root/.hermes/hermes-agent}"

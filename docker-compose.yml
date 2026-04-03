@@ -20,6 +20,7 @@ services:
       - hermes-adapter
     environment:
       ENABLE_OPENAI_API: "True"
+      ENABLE_FORWARD_USER_INFO_HEADERS: "True"
       OPENAI_API_BASE_URL: http://hermes-adapter:8001/v1
       OPENAI_API_KEY: hermes-local
       WEBUI_AUTH: "False"

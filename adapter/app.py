@@ -459,6 +459,16 @@ def _should_show_trace(prompt: str) -> bool:
     return any(marker in lowered for marker in coding_markers)
 
 
+def _hermes_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("CI", "1")
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env.setdefault("PROMPT_TOOLKIT_COLOR_DEPTH", "DEPTH_1_BIT")
+    return env
+
+
 def _run_subprocess(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run(
@@ -468,6 +478,7 @@ def _run_subprocess(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
             text=True,
             timeout=timeout,
             check=False,
+            env=_hermes_subprocess_env(),
         )
         return result
     except FileNotFoundError as exc:
@@ -873,6 +884,7 @@ def _build_live_chat_streaming_response(
             cwd=HERMES_WORKDIR,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=_hermes_subprocess_env(),
         )
 
         session_id: str | None = None

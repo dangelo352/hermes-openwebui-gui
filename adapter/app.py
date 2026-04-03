@@ -421,6 +421,42 @@ def _extract_session_id(stdout: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _extract_error_text(stdout: str) -> str:
+    normalized = stdout.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in normalized.splitlines()]
+    filtered: list[str] = []
+    skip_prefixes = (
+        "Query:",
+        "Available Tools",
+        "Available Skills",
+        "gpt-",
+        "Session:",
+        "⚠",
+    )
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("┌", "│", "└", "╭", "╰")):
+            continue
+        if stripped.startswith(skip_prefixes):
+            continue
+        filtered.append(stripped)
+
+    if not filtered:
+        return "Hermes chat failed"
+
+    joined = "\n".join(filtered)
+    if "NoConsoleScreenBufferError" in joined:
+        return (
+            "Windows non-console terminal detection failure while launching Hermes chat. "
+            "The adapter now forces non-interactive mode for SSH/background sessions; update/restart the adapter on the host and retry.\n\n"
+            + "\n".join(filtered[-12:])
+        )
+
+    return "\n".join(filtered[-20:])
+
+
 def _sanitize_stream_line(text: str) -> str | None:
     stripped = text.strip()
     if not stripped:
@@ -501,8 +537,8 @@ def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[st
     cmd, show_trace = _build_hermes_chat_cmd(prompt, resume_session)
     result = _run_subprocess(cmd, CHAT_TIMEOUT_SECONDS)
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "Hermes chat failed").strip()
-        raise HTTPException(status_code=500, detail=detail)
+        detail_source = (result.stderr or result.stdout or "Hermes chat failed").strip()
+        raise HTTPException(status_code=500, detail=_extract_error_text(detail_source))
     text = _extract_text(result.stdout)
     if not text:
         raise HTTPException(status_code=500, detail="Hermes returned an empty response")
@@ -878,7 +914,7 @@ def _build_live_chat_streaming_response(
     async def event_stream():
         yield _sse_chunk(completion_id, created, model, role="assistant")
 
-        cmd, _ = _build_hermes_chat_cmd(prompt, resume_session, force_verbose=True)
+        cmd, show_trace = _build_hermes_chat_cmd(prompt, resume_session, force_verbose=False)
         process = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=HERMES_WORKDIR,
@@ -900,9 +936,10 @@ def _build_live_chat_streaming_response(
                 collected.append(text)
                 if not session_id:
                     session_id = _extract_session_id(text)
-                clean = _sanitize_stream_line(text)
-                if clean:
-                    yield _sse_chunk(completion_id, created, model, content=clean)
+                if show_trace:
+                    clean = _sanitize_stream_line(text)
+                    if clean:
+                        yield _sse_chunk(completion_id, created, model, content=clean)
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
@@ -915,12 +952,17 @@ def _build_live_chat_streaming_response(
         if not session_id:
             session_id = _extract_session_id(full_output)
         if return_code != 0:
-            detail = full_output.strip() or "Hermes chat failed"
+            detail = _extract_error_text(full_output.strip() or "Hermes chat failed")
             yield _sse_chunk(completion_id, created, model, content=f"\n[adapter] Error:\n{detail}\n")
         else:
             final_text = _extract_text(full_output)
+            if show_trace:
+                trace_lines = _extract_tool_trace(full_output)
+                if trace_lines:
+                    tool_header = "Tool activity:\n" + "\n".join(trace_lines) + "\n\nResult:\n"
+                    final_text = tool_header + final_text if final_text else tool_header.rstrip()
             if final_text:
-                prefix = "\n\n" if collected else ""
+                prefix = "\n\n" if collected and show_trace else ""
                 suffix = "\n"
                 pieces = _chunk_text_for_stream(prefix + final_text + suffix)
                 for piece in pieces:

@@ -77,6 +77,10 @@ Repair / rebuild everything after updates
 - macOS/Linux: ./scripts/fix_all.sh
 - CLI: python launcher.py update --skip-git-pull
 
+Cross-platform note
+- The main one-click launchers are intended to work for general Windows, macOS, and Linux users.
+- The WSL Windows desktop sync helper now resolves the active Windows user's Desktop dynamically instead of relying on a hardcoded username.
+
 What the launcher does automatically
 1. Creates .venv if needed
 2. Installs/updates adapter dependencies

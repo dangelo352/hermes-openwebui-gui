@@ -538,6 +538,54 @@ def _build_openai_response(text: str, completion_id: str, created: int, model: s
     )
 
 
+def _run_hermes_cli_command(command_text: str) -> dict[str, Any]:
+    parts = shlex.split(command_text.strip())
+    if not parts:
+        raise HTTPException(status_code=400, detail="Hermes command cannot be empty")
+    if parts[0].startswith("/"):
+        parts[0] = parts[0][1:]
+    cmd = [HERMES_BIN, *parts]
+    result = _run_subprocess(cmd, COMMAND_TIMEOUT_SECONDS)
+    return {
+        "command": command_text,
+        "argv": parts,
+        "exit_code": result.returncode,
+        "stdout": (result.stdout or "").strip(),
+        "stderr": (result.stderr or "").strip(),
+        "rendered": _format_command_result(result, cmd),
+    }
+
+
+def _gateway_overview() -> dict[str, Any]:
+    gateway = _run_hermes_cli_command("gateway status")
+    sessions = _run_hermes_cli_command("sessions list")
+    cron = _run_hermes_cli_command("cron list")
+    config = _run_hermes_cli_command("config")
+    doctor = _run_hermes_cli_command("doctor")
+    with _STATE_LOCK:
+        session_map = _load_session_map()
+    return {
+        "health": {"status": "ok", "model": MODEL_NAME, "hermes_bin": HERMES_BIN, "hermes_workdir": HERMES_WORKDIR},
+        "gateway": gateway,
+        "sessions": sessions,
+        "cron": cron,
+        "config": config,
+        "doctor": doctor,
+        "session_map": session_map,
+        "session_map_count": len(session_map),
+        "supported_channels": [
+            {"id": "discord", "name": "Discord", "setup_command": "gateway setup", "docs_slug": "discord"},
+            {"id": "telegram", "name": "Telegram", "setup_command": "gateway setup", "docs_slug": "telegram"},
+            {"id": "slack", "name": "Slack", "setup_command": "gateway setup", "docs_slug": "slack"},
+            {"id": "whatsapp", "name": "WhatsApp", "setup_command": "gateway setup", "docs_slug": "whatsapp"},
+            {"id": "signal", "name": "Signal", "setup_command": "gateway setup", "docs_slug": "signal"},
+            {"id": "matrix", "name": "Matrix", "setup_command": "gateway setup", "docs_slug": "matrix"},
+            {"id": "email", "name": "Email", "setup_command": "gateway setup", "docs_slug": "email"},
+            {"id": "open-webui", "name": "Open WebUI", "setup_command": "gateway setup", "docs_slug": "open-webui"},
+        ],
+    }
+
+
 def _build_streaming_response(text: str, completion_id: str, created: int, model: str) -> StreamingResponse:
     async def event_stream():
         first = {
@@ -663,6 +711,24 @@ def models() -> dict[str, list[dict[str, Any]]]:
 def session_map() -> dict[str, Any]:
     with _STATE_LOCK:
         return {"data": _load_session_map()}
+
+
+@app.get("/v1/hermes/overview")
+def hermes_overview() -> dict[str, Any]:
+    return _gateway_overview()
+
+
+@app.post("/v1/hermes/command")
+def hermes_command(payload: HermesCommandRequest) -> dict[str, Any]:
+    normalized = payload.command.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Command cannot be empty")
+    if normalized.startswith("/"):
+        rendered = _run_slash_command(normalized, {"chat_id": None, "message_id": None, "user_id": None})
+        return {"command": normalized, "mode": "slash", "rendered": rendered}
+    result = _run_hermes_cli_command(normalized)
+    result["mode"] = "cli"
+    return result
 
 
 @app.post("/v1/chat/completions")

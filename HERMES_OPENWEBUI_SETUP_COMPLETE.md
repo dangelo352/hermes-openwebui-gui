@@ -249,11 +249,11 @@ Portable git bundle:
 
 ## GitHub status
 
-A local git repo exists.
+The project is now in a real GitHub repo:
+- https://github.com/dangelo352/hermes-openwebui-gui
 
-I also checked for GitHub auth material, but the currently discoverable token/API path did not validate successfully for GitHub API creation from this environment.
-
-So the project is git-ready locally, but a successful real GitHub push still depends on working GitHub auth details.
+Local repo still exists at:
+- `/root/hermes-openwebui-gui`
 
 ## Windows copy created
 
@@ -421,6 +421,7 @@ In one line:
 You now have:
 - a Windows-accessible copy of the project
 - a local git repo with the changes committed
+- a real GitHub repo at `https://github.com/dangelo352/hermes-openwebui-gui`
 - a working Open WebUI GUI at `http://127.0.0.1:8080`
 - a Hermes-backed adapter at `http://127.0.0.1:8001`
 - persistent session mapping support

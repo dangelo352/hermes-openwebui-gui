@@ -17,6 +17,9 @@ What is new now
 - Slash command support in the GUI for Hermes CLI passthrough and adapter session controls
 - Windows launcher batch file
 
+GitHub repo
+- https://github.com/dangelo352/hermes-openwebui-gui
+
 Project layout
 - adapter/app.py                        FastAPI OpenAI-compatible wrapper
 - requirements.txt                     Adapter dependencies

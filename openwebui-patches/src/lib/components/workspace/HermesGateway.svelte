@@ -261,7 +261,6 @@
 	};
 
 	const visibleEnvValue = (key: string) => getEnvMaskedValue(key) || getEnvValue(key) || 'Not set';
-	const allConfigViews = ['overview', 'config', 'env', 'channels', 'logs'];
 	const configViews = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'config', label: 'config.yaml' },
@@ -452,9 +451,101 @@
 			{:else if activeTab === 'profiles'}
 				<div class="grid grid-cols-1 xl:grid-cols-3 gap-4"><div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Profiles</div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{overview.profiles?.stdout || overview.profiles?.rendered}</pre></div><div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Plugins</div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{overview.plugins?.stdout || overview.plugins?.rendered}</pre></div><div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Per-platform Tools</div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{overview.tools?.stdout || overview.tools?.rendered}</pre></div></div>
 			{:else if activeTab === 'config'}
-				<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Hermes Config</div><div class="mt-3 text-xs text-gray-500">{configFiles?.config?.path}</div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{configFiles?.config?.raw || overview.config?.stdout || overview.config?.rendered}</pre></div>
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Hermes .env</div><div class="mt-3 text-xs text-gray-500">{configFiles?.env?.path}</div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{configFiles?.env?.raw || 'No .env data loaded'}</pre></div>
+				<div class="space-y-4">
+					<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">config.yaml</div><div class="mt-2 text-lg font-semibold">{topLevelConfigEntries().length}</div><div class="mt-1 text-sm text-gray-500">top-level sections</div></div>
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">.env</div><div class="mt-2 text-lg font-semibold">{envEntries().length}</div><div class="mt-1 text-sm text-gray-500">environment keys</div></div>
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">Channel Directory</div><div class="mt-2 text-lg font-semibold">{channelDirectoryEntries().length}</div><div class="mt-1 text-sm text-gray-500">tracked channel entries</div></div>
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">Gateway Log</div><div class="mt-2 text-lg font-semibold">{fileLineCount(configFiles?.gateway_log_tail || '')}</div><div class="mt-1 text-sm text-gray-500">tail lines loaded</div></div>
+					</div>
+
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-gradient-to-b from-white to-gray-50/60 dark:from-black/20 dark:to-black/5">
+						<div class="flex items-start justify-between gap-3 flex-wrap">
+							<div>
+								<div class="text-lg font-semibold">Gateway config files</div>
+								<div class="mt-1 text-sm text-gray-500">Readable cards, grouped metadata, and expandable raw views instead of a giant text dump.</div>
+							</div>
+							<div class="flex gap-2 flex-wrap">
+								{#each configViews as view}
+									<button class="px-3 py-1.5 rounded-xl text-xs transition {configView === view.id ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800'}" on:click={() => (configView = view.id)}>{view.label}</button>
+								{/each}
+								<button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={() => (configExpandAll = !configExpandAll)}>{configExpandAll ? 'Collapse all' : 'Expand all'}</button>
+							</div>
+						</div>
+					</div>
+
+					{#if configView === 'overview'}
+						<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+								<div class="flex items-center justify-between gap-3"><div><div class="text-sm font-semibold">config.yaml overview</div><div class="text-xs text-gray-500">{configFiles?.config?.path}</div></div><Badge>{fileLineCount(configFiles?.config?.raw || '')} lines</Badge></div>
+								<div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+									{#each topLevelConfigEntries() as [key, value]}
+										<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 p-4"><div class="flex items-center justify-between gap-3"><div class="font-semibold">{key}</div><Badge>{summarizeValue(value)}</Badge></div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-white dark:bg-black/30 rounded-xl p-3 overflow-x-auto border border-gray-100 dark:border-gray-800">{markdownFence('yaml', `${key}: ${stringifyBlock(value)}`)}</pre></div>
+									{/each}
+								</div>
+							</div>
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+								<div class="flex items-center justify-between gap-3"><div><div class="text-sm font-semibold">.env overview</div><div class="text-xs text-gray-500">{configFiles?.env?.path}</div></div><Badge>{envGroups().length} groups</Badge></div>
+								<div class="mt-4 space-y-3">
+									{#each envGroups() as [group, entries]}
+										<details class="group rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 overflow-hidden" open={configExpandAll}>
+											<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3"><div><div class="font-semibold">{group}</div><div class="text-xs text-gray-500">{entries.length} keys</div></div><div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div></summary>
+											<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850 space-y-2 bg-white/70 dark:bg-black/10">
+												{#each entries as [key]}
+													<div class="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-black/30 px-3 py-2"><div class="text-xs uppercase tracking-wide text-gray-500">{key}</div><div class="mt-1 text-xs font-mono break-all">{visibleEnvValue(key)}</div></div>
+												{/each}
+											</div>
+										</details>
+									{/each}
+								</div>
+							</div>
+						</div>
+					{:else if configView === 'config'}
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+							<div class="flex items-center justify-between gap-3 flex-wrap"><div><div class="text-sm font-semibold">Hermes config.yaml</div><div class="text-xs text-gray-500">{configFiles?.config?.path}</div></div><Badge>{fileLineCount(configFiles?.config?.raw || '')} lines</Badge></div>
+							<details class="mt-4 group rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 overflow-hidden" open={configExpandAll || true}>
+								<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3"><div><div class="font-semibold">Raw file</div><div class="text-xs text-gray-500">Full YAML, kept readable inside a file-style container.</div></div><div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div></summary>
+								<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850"><pre class="text-xs whitespace-pre-wrap break-words bg-white dark:bg-black/30 rounded-xl p-4 overflow-x-auto border border-gray-100 dark:border-gray-800">{markdownFence('yaml', configFiles?.config?.raw || overview.config?.stdout || overview.config?.rendered || '')}</pre></div>
+							</details>
+						</div>
+					{:else if configView === 'env'}
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+							<div class="flex items-center justify-between gap-3 flex-wrap"><div><div class="text-sm font-semibold">Hermes .env</div><div class="text-xs text-gray-500">{configFiles?.env?.path}</div></div><Badge>{envEntries().length} keys</Badge></div>
+							<div class="mt-4 space-y-3">
+								{#each envGroups() as [group, entries]}
+									<details class="group rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 overflow-hidden" open={configExpandAll}>
+										<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3"><div><div class="font-semibold">{group}</div><div class="text-xs text-gray-500">{entries.length} keys</div></div><div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div></summary>
+										<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850 bg-white/70 dark:bg-black/10 space-y-2">
+											{#each entries as [key]}
+												<div class="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-black/30 px-3 py-3"><div class="flex items-center justify-between gap-3"><div class="text-xs uppercase tracking-wide text-gray-500">{key}</div><Badge>{getEnvValue(key) ? 'set' : 'masked/empty'}</Badge></div><div class="mt-2 text-xs font-mono break-all">{visibleEnvValue(key)}</div></div>
+											{/each}
+											<pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-white dark:bg-black/30 rounded-xl p-4 overflow-x-auto border border-gray-100 dark:border-gray-800">{markdownFence('bash', entries.map(([key]) => `${key}=${visibleEnvValue(key)}`).join('\n'))}</pre>
+										</div>
+									</details>
+								{/each}
+							</div>
+						</div>
+					{:else if configView === 'channels'}
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+							<div class="flex items-center justify-between gap-3 flex-wrap"><div><div class="text-sm font-semibold">Channel directory</div><div class="text-xs text-gray-500">Structured channel metadata from Hermes home.</div></div><Badge>{channelDirectoryEntries().length} entries</Badge></div>
+							<div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+								{#each channelDirectoryEntries() as [channelId, value]}
+									<details class="group rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 overflow-hidden" open={configExpandAll}>
+										<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3"><div><div class="font-semibold">{channelId}</div><div class="text-xs text-gray-500">{summarizeValue(value)}</div></div><div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div></summary>
+										<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850"><pre class="text-xs whitespace-pre-wrap break-words bg-white dark:bg-black/30 rounded-xl p-4 overflow-x-auto border border-gray-100 dark:border-gray-800">{markdownFence('json', stringifyBlock(value))}</pre></div>
+									</details>
+								{/each}
+							</div>
+						</div>
+					{:else if configView === 'logs'}
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+							<div class="flex items-center justify-between gap-3 flex-wrap"><div><div class="text-sm font-semibold">Gateway log tail</div><div class="text-xs text-gray-500">Recent adapter-visible gateway output.</div></div><Badge>{fileLineCount(configFiles?.gateway_log_tail || '')} lines</Badge></div>
+							<details class="mt-4 group rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 overflow-hidden" open={configExpandAll || true}>
+								<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3"><div><div class="font-semibold">Recent log output</div><div class="text-xs text-gray-500">Minimize or expand as needed.</div></div><div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div></summary>
+								<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850"><pre class="text-xs whitespace-pre-wrap break-words bg-white dark:bg-black/30 rounded-xl p-4 overflow-x-auto border border-gray-100 dark:border-gray-800">{markdownFence('text', configFiles?.gateway_log_tail || 'No gateway log output yet.')}</pre></div>
+							</details>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		{/if}

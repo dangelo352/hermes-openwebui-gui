@@ -33,7 +33,7 @@ A project folder was created at:
 - `/root/hermes-openwebui-gui`
 
 A Windows-accessible copy was also created at:
-- `C:\Users\DAngelo\Desktop\hermes-openwebui-gui`
+- `C:\Users\<YourUser>\Desktop\hermes-openwebui-gui`
 
 That project contains:
 - `adapter/app.py`
@@ -257,7 +257,7 @@ That script runs uvicorn and serves `adapter.app:app` on port 8001.
 ## Windows launcher added
 
 A one-click Windows batch launcher was created:
-- `C:\Users\DAngelo\Desktop\hermes-openwebui-gui\windows-start-hermes-openwebui.bat`
+- `C:\Users\<YourUser>\Desktop\hermes-openwebui-gui\windows-start-hermes-openwebui.bat`
 
 What it does:
 1. Starts Docker Desktop
@@ -293,7 +293,7 @@ Local repo still exists at:
 The project was copied to your Windows filesystem so you can access it directly from your main PC.
 
 Windows-accessible folder:
-- `C:\Users\DAngelo\Desktop\hermes-openwebui-gui`
+- `C:\Users\<YourUser>\Desktop\hermes-openwebui-gui`
 
 This folder is the one you can open in Windows Explorer, copy, edit, zip, back up, or push to GitHub from your normal Windows apps.
 
@@ -360,11 +360,11 @@ Open your browser on Windows and go to:
 
 ### Open the project folder on Windows
 Go to:
-- `C:\Users\DAngelo\Desktop\hermes-openwebui-gui`
+- `C:\Users\<YourUser>\Desktop\hermes-openwebui-gui`
 
 ### Open the full in-depth markdown file
 Open:
-- `C:\Users\DAngelo\Desktop\hermes-openwebui-gui\HERMES_OPENWEBUI_SETUP_COMPLETE.md`
+- `C:\Users\<YourUser>\Desktop\hermes-openwebui-gui\HERMES_OPENWEBUI_SETUP_COMPLETE.md`
 
 ## Useful commands to remember
 

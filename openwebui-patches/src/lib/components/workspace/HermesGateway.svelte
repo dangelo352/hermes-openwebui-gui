@@ -103,11 +103,12 @@
 	let commandInput = '/gateway status';
 	let commandResult: CommandResult | null = null;
 	let channelQuery = '';
-	let skillsQuery = 'calendar';
-	let skillsSource = 'clawhub';
-	let skillsLimit = 20;
+	let skillsQuery = '';
+	let skillsSource = 'official';
+	let skillsLimit = 24;
 	let skillsResult: CommandResult | null = null;
 	let installIdentifier = '';
+	let skillsTab = 'registry';
 	let selectedChannel = 'discord';
 	let configView = 'overview';
 	let configExpandAll = false;
@@ -120,6 +121,14 @@
 		{ label: 'Sessions List', command: '/sessions list' },
 		{ label: 'Cron List', command: '/cron list' },
 		{ label: 'Config', command: '/config' }
+	];
+	const skillsSources = [
+		{ id: 'official', label: 'Official' },
+		{ id: 'clawhub', label: 'ClawHub' },
+		{ id: 'all', label: 'All' },
+		{ id: 'skills-sh', label: 'skills.sh' },
+		{ id: 'github', label: 'GitHub' },
+		{ id: 'lobehub', label: 'LobeHub' }
 	];
 
 	const refresh = async () => {
@@ -158,7 +167,8 @@
 	};
 
 	const runSkillsSearch = async () => {
-		await runCommand(`skills search ${JSON.stringify(skillsQuery)} --source ${skillsSource} --limit ${skillsLimit}`, { target: 'skills', refreshAfter: false });
+		const query = skillsQuery.trim() || 'calendar';
+		await runCommand(`skills search ${JSON.stringify(query)} --source ${skillsSource} --limit ${skillsLimit}`, { target: 'skills', refreshAfter: false });
 	};
 
 	const runSkillsBrowse = async () => {
@@ -439,25 +449,126 @@
 					</div>
 				</div>
 			{:else if activeTab === 'skills'}
-				<div class="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4">
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4">
-						<div class="text-sm font-semibold">Search / Browse Skills</div>
-						<div class="mt-3 grid grid-cols-1 md:grid-cols-[1fr,180px,120px] gap-2">
-							<input class="rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" bind:value={skillsQuery} placeholder="calendar" />
-							<select class="rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" bind:value={skillsSource}>
-								<option value="all">all</option><option value="official">official</option><option value="clawhub">clawhub</option><option value="skills-sh">skills-sh</option><option value="github">github</option><option value="lobehub">lobehub</option>
-							</select>
-							<input class="rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" bind:value={skillsLimit} type="number" min="1" max="50" />
+				<div class="space-y-5">
+					<div class="rounded-3xl border border-gray-100 dark:border-gray-850 bg-gradient-to-br from-white via-white to-gray-50/80 dark:from-black/30 dark:via-black/20 dark:to-gray-950/20 p-5 shadow-sm">
+						<div class="flex items-start justify-between gap-4 flex-wrap">
+							<div>
+								<div class="text-xs uppercase tracking-[0.22em] text-gray-500">Hermes Skills Registry</div>
+								<div class="mt-2 text-2xl font-semibold">Discover official skills with a cleaner install workflow</div>
+								<div class="mt-2 text-sm text-gray-500 max-w-3xl">This is now styled more like the OpenClaw registry flow: cleaner controls, official-first discovery, and a dedicated output panel instead of a raw command dump.</div>
+							</div>
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white/80 dark:bg-black/30 px-4 py-3 min-w-[240px]">
+								<div class="text-xs uppercase tracking-wide text-gray-500">Current source</div>
+								<div class="mt-2 text-lg font-semibold">{skillsSources.find((source) => source.id === skillsSource)?.label ?? skillsSource}</div>
+								<div class="mt-1 text-sm text-gray-500">Defaulted to official results first for cleaner discovery.</div>
+							</div>
 						</div>
-						<div class="mt-3 flex gap-2 flex-wrap">
-							<button class="px-3 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black text-xs transition" on:click={runSkillsSearch} disabled={runningCommand}>Search</button>
-							<button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={runSkillsBrowse} disabled={runningCommand}>Browse</button>
-							<button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={() => runCommand('skills list', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>Installed</button>
-							<button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={() => runCommand('skills check', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>Check Updates</button>
-						</div>
-						<pre class="mt-4 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{renderPanel(skillsResult, 'Search ClawHub, official, skills.sh, GitHub or LobeHub-backed skills here.')}</pre>
 					</div>
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Inspect / Install Skill</div><div class="mt-3 space-y-3"><input class="w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" bind:value={installIdentifier} placeholder="official/security/1password" /><div class="flex gap-2 flex-wrap"><button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={runSkillInspect} disabled={runningCommand}>Inspect</button><button class="px-3 py-1.5 rounded-xl bg-black text-white dark:bg-white dark:text-black text-xs transition" on:click={runSkillInstall} disabled={runningCommand}>Install</button><button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={() => runCommand(`skills uninstall ${installIdentifier.trim()}`, { target: 'skills', refreshAfter: true })} disabled={runningCommand || !installIdentifier.trim()}>Uninstall</button></div><div class="text-xs text-gray-500">Use the full identifier when search results are ambiguous. ClawHub-backed discovery is integrated here through Hermes skills sources.</div></div></div>
+
+					<div class="flex gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-900 w-fit">
+						<button class="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition {skillsTab === 'registry' ? 'bg-white dark:bg-black text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'}" on:click={() => (skillsTab = 'registry')}>Official Registry</button>
+						<button class="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition {skillsTab === 'installed' ? 'bg-white dark:bg-black text-black dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-100'}" on:click={() => (skillsTab = 'installed')}>Installed / Updates</button>
+					</div>
+
+					{#if skillsTab === 'registry'}
+						<div class="grid grid-cols-1 xl:grid-cols-[1.2fr,0.8fr] gap-4">
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-5 bg-white dark:bg-black/20 shadow-sm">
+								<div class="flex items-start justify-between gap-3 flex-wrap">
+									<div>
+										<div class="text-sm font-semibold">Browse registry</div>
+										<div class="text-xs text-gray-500 mt-1">Search official skills first, then fan out to other registries when needed.</div>
+									</div>
+									<div class="rounded-full border border-gray-200 dark:border-gray-800 px-3 py-1 text-xs text-gray-500">limit {skillsLimit}</div>
+								</div>
+
+								<div class="mt-4 space-y-4">
+									<div class="relative">
+										<div class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Search className="size-4" /></div>
+										<input class="w-full rounded-2xl border border-gray-100 dark:border-gray-800 bg-transparent pl-10 pr-4 py-3 text-sm outline-hidden" bind:value={skillsQuery} placeholder="Search skills… try calendar, github, notion, docker" />
+									</div>
+
+									<div class="flex gap-2 flex-wrap">
+										{#each skillsSources as source}
+											<button class="px-3 py-1.5 rounded-full text-xs font-medium transition {skillsSource === source.id ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300'}" on:click={() => (skillsSource = source.id)}>{source.label}</button>
+										{/each}
+									</div>
+
+									<div class="grid grid-cols-1 md:grid-cols-[140px,1fr] gap-3">
+										<div class="rounded-2xl border border-gray-100 dark:border-gray-800 px-3 py-3">
+											<div class="text-xs uppercase tracking-wide text-gray-500 mb-2">Result limit</div>
+											<input class="w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" bind:value={skillsLimit} type="number" min="1" max="50" />
+										</div>
+										<div class="rounded-2xl border border-gray-100 dark:border-gray-800 px-3 py-3">
+											<div class="text-xs uppercase tracking-wide text-gray-500 mb-2">Actions</div>
+											<div class="flex gap-2 flex-wrap">
+												<button class="px-3 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black text-sm font-medium transition" on:click={runSkillsSearch} disabled={runningCommand}>Search</button>
+												<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-sm font-medium transition" on:click={runSkillsBrowse} disabled={runningCommand}>Browse trending</button>
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<div class="mt-5 rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 shadow-sm overflow-hidden">
+									<div class="px-4 py-3 border-b border-gray-100 dark:border-gray-850 flex items-center justify-between gap-3">
+										<div>
+											<div class="text-sm font-semibold">Search results console</div>
+											<div class="text-xs text-gray-500">Live markdown/text output from Hermes skills search commands.</div>
+										</div>
+										<div class="rounded-full bg-gray-100 dark:bg-gray-900 px-3 py-1 text-xs text-gray-500 font-mono">skills {skillsSource}</div>
+									</div>
+									<div class="rounded-b-2xl border-t border-slate-800 bg-gradient-to-b from-slate-950 to-black text-slate-100 overflow-hidden">
+										<div class="px-4 py-2 border-b border-slate-800 text-[11px] uppercase tracking-[0.18em] text-slate-400">registry-search.log</div>
+										<pre class="px-4 py-4 text-xs whitespace-pre-wrap break-words overflow-x-auto max-h-[32rem] font-mono">{renderPanel(skillsResult, 'Search official skills, browse trending registries, or inspect a skill below.')}</pre>
+									</div>
+								</div>
+							</div>
+
+							<div class="space-y-4">
+								<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-5 bg-white dark:bg-black/20 shadow-sm">
+									<div class="text-sm font-semibold">Inspect / install skill</div>
+									<div class="mt-1 text-xs text-gray-500">Use the full identifier for precise installs, just like the OpenClaw registry flow.</div>
+									<div class="mt-4 space-y-3">
+										<input class="w-full rounded-2xl border border-gray-100 dark:border-gray-800 bg-transparent px-4 py-3 text-sm outline-hidden" bind:value={installIdentifier} placeholder="official/security/1password" />
+										<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+											<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-sm font-medium transition" on:click={runSkillInspect} disabled={runningCommand}>Inspect</button>
+											<button class="px-3 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black text-sm font-medium transition" on:click={runSkillInstall} disabled={runningCommand}>Install</button>
+											<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-sm font-medium transition" on:click={() => runCommand(`skills uninstall ${installIdentifier.trim()}`, { target: 'skills', refreshAfter: true })} disabled={runningCommand || !installIdentifier.trim()}>Uninstall</button>
+											<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-sm font-medium transition" on:click={() => runCommand(`skills view ${installIdentifier.trim()}`, { target: 'skills', refreshAfter: false })} disabled={runningCommand || !installIdentifier.trim()}>Preview</button>
+										</div>
+									</div>
+								</div>
+
+								<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-5 bg-white dark:bg-black/20 shadow-sm">
+									<div class="text-sm font-semibold">Quick actions</div>
+									<div class="mt-4 grid grid-cols-1 gap-2">
+										<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-left text-sm transition" on:click={() => runCommand('skills list', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>View installed skills</button>
+										<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-left text-sm transition" on:click={() => runCommand('skills check', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>Check for updates</button>
+										<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-left text-sm transition" on:click={() => { skillsSource = 'official'; runSkillsBrowse(); }} disabled={runningCommand}>Browse official trending</button>
+										<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-left text-sm transition" on:click={() => { skillsSource = 'clawhub'; runSkillsBrowse(); }} disabled={runningCommand}>Browse ClawHub trending</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					{:else}
+						<div class="grid grid-cols-1 xl:grid-cols-[0.9fr,1.1fr] gap-4">
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-5 bg-white dark:bg-black/20 shadow-sm">
+								<div class="text-sm font-semibold">Installed / updates</div>
+								<div class="mt-1 text-xs text-gray-500">Maintenance actions and installed-skill inspection in a cleaner admin layout.</div>
+								<div class="mt-4 grid grid-cols-1 gap-2">
+									<button class="px-3 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black text-left text-sm font-medium transition" on:click={() => runCommand('skills list', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>List installed skills</button>
+									<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-left text-sm transition" on:click={() => runCommand('skills check', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>Check updates</button>
+									<button class="px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-left text-sm transition" on:click={() => runCommand('skills browse --source official --page 1 --size 12', { target: 'skills', refreshAfter: false })} disabled={runningCommand}>Browse official recommendations</button>
+								</div>
+							</div>
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-5 bg-white dark:bg-black/20 shadow-sm overflow-hidden">
+								<div class="px-0 pb-3 flex items-center justify-between gap-3"><div><div class="text-sm font-semibold">Installed skills console</div><div class="text-xs text-gray-500">Rendered command output in a readable terminal-style panel.</div></div></div>
+								<div class="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-950 to-black text-slate-100 overflow-hidden">
+									<div class="px-4 py-2 border-b border-slate-800 text-[11px] uppercase tracking-[0.18em] text-slate-400">skills-installed.log</div>
+									<pre class="px-4 py-4 text-xs whitespace-pre-wrap break-words overflow-x-auto max-h-[34rem] font-mono">{renderPanel(skillsResult, 'Run Installed / Updates actions to view installed skills, update checks, and maintenance output here.')}</pre>
+								</div>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{:else if activeTab === 'ops'}
 				<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Run Hermes Command</div><div class="mt-3 flex gap-2 flex-wrap"><input class="flex-1 min-w-[280px] rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" bind:value={commandInput} placeholder="/gateway status" /><button class="px-4 py-2 rounded-xl bg-black text-white dark:bg-white dark:text-black text-sm font-medium" on:click={() => runCommand(commandInput)} disabled={runningCommand}>Run</button></div>{#if runningCommand}<div class="mt-3 flex items-center gap-2 text-sm text-gray-500"><Spinner className="size-4" /> Running...</div>{/if}<pre class="mt-4 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{renderPanel(commandResult)}</pre></div>

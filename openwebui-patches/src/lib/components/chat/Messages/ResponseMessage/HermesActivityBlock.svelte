@@ -15,6 +15,20 @@
 	export let onTaskClick = () => {};
 	export let onSourceClick = () => {};
 
+	type ToolEvent = {
+		kind: 'tool';
+		toolName: string;
+		status: 'running' | 'done';
+		callLine: string;
+		args?: string;
+		result?: string;
+	};
+
+	type LogEvent = {
+		kind: 'log';
+		line: string;
+	};
+
 	const FILE_PATTERN = /(?:[A-Za-z]:\\[^\s`'\"]+|\/(?:[^\s`'\"]+\/)*[^\s`'\"]+|(?:^|\s)(?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,8})/g;
 
 	function extractFiles(text: string): string[] {
@@ -29,29 +43,76 @@
 			.filter(Boolean);
 	}
 
+	function summarizeTool(line: string): string {
+		const match = line.match(/Tool\s+\d+:\s+([^\(\s]+)/);
+		return match?.[1] ?? 'tool';
+	}
+
+	function buildEvents(lines: string[]): Array<ToolEvent | LogEvent> {
+		const events: Array<ToolEvent | LogEvent> = [];
+		let pendingTool: ToolEvent | null = null;
+
+		for (const line of lines) {
+			if (line.startsWith('📞 Tool')) {
+				if (pendingTool) events.push(pendingTool);
+				pendingTool = {
+					kind: 'tool',
+					toolName: summarizeTool(line),
+					status: 'running',
+					callLine: line
+				};
+				continue;
+			}
+
+			if (line.startsWith('✅ Tool')) {
+				if (pendingTool) {
+					pendingTool.status = 'done';
+					pendingTool.callLine = line;
+					continue;
+				}
+				events.push({ kind: 'log', line });
+				continue;
+			}
+
+			if (line.startsWith('Args:')) {
+				if (pendingTool) {
+					pendingTool.args = line.replace(/^Args:\s*/, '');
+					continue;
+				}
+				events.push({ kind: 'log', line });
+				continue;
+			}
+
+			if (line.startsWith('Result:')) {
+				if (pendingTool) {
+					pendingTool.result = line.replace(/^Result:\s*/, '');
+					events.push(pendingTool);
+					pendingTool = null;
+					continue;
+				}
+				events.push({ kind: 'log', line });
+				continue;
+			}
+
+			if (pendingTool) {
+				events.push(pendingTool);
+				pendingTool = null;
+			}
+			events.push({ kind: 'log', line });
+		}
+
+		if (pendingTool) events.push(pendingTool);
+		return events;
+	}
+
 	function lineTone(line: string): string {
-		if (line.startsWith('📞 Tool')) return 'call';
-		if (line.startsWith('✅ Tool')) return 'done';
-		if (line.startsWith('Args:')) return 'args';
-		if (line.startsWith('Result:')) return 'result';
 		if (line.startsWith('↻')) return 'resume';
 		return 'plain';
 	}
 
-	function linePrompt(line: string): string {
-		if (line.startsWith('📞 Tool')) return '[tool]';
-		if (line.startsWith('✅ Tool')) return '[done]';
-		if (line.startsWith('Args:')) return '[args]';
-		if (line.startsWith('Result:')) return '[out ]';
-		if (line.startsWith('↻')) return '[sess]';
-		return '[log ]';
-	}
-
 	$: sections = (() => {
 		const marker = 'Tool activity:\n';
-		if (!content.includes(marker)) {
-			return null;
-		}
+		if (!content.includes(marker)) return null;
 		const rest = content.split(marker)[1] ?? '';
 		const [tracePart, resultPartRaw] = rest.split('\n\nResult:\n');
 		const trace = (tracePart ?? '').trim();
@@ -60,6 +121,7 @@
 		return {
 			trace,
 			traceLines,
+			events: buildEvents(traceLines),
 			result,
 			files: extractFiles(`${trace}\n${result}`),
 			isLive: !done,
@@ -75,7 +137,7 @@
 				{sections.isLive ? 'Live Hermes activity' : 'Hermes activity log'}
 			</span>
 			<span class="rounded-full bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300 px-2.5 py-1">Model: {model?.name ?? 'hermes-gui'}</span>
-			<span class="rounded-full bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 px-2.5 py-1">{sections.traceLines.length} log lines</span>
+			<span class="rounded-full bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 px-2.5 py-1">{sections.events.length} events</span>
 			{#if sections.hasResult}
 				<span class="rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 px-2.5 py-1">Result ready</span>
 			{/if}
@@ -91,52 +153,54 @@
 						</div>
 					</div>
 					<div class="mt-1 text-sm text-slate-300">
-						Live tool calls and progress log. Collapse this when you just want the final answer.
+						Compact tool cards and logs. Collapse this when you just want the final answer.
 					</div>
 				</div>
 				<div class="text-xs text-slate-500 group-open:rotate-180 transition">⌄</div>
 			</summary>
 
-			<div class="px-4 py-3">
-				<div class="rounded-xl border border-slate-800 bg-black/70 overflow-hidden">
-					<div class="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-800 bg-slate-900/80">
-						<div class="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-							<span class="inline-block h-2 w-2 rounded-full bg-emerald-400 {sections.isLive ? 'animate-pulse' : ''}"></span>
-							stream.log
-						</div>
-						<div class="text-[11px] text-slate-500 font-mono">tail -f hermes</div>
-					</div>
-					<div class="max-h-80 overflow-y-auto px-3 py-3 font-mono text-xs leading-6">
-						{#each sections.traceLines as line}
-							<div class="grid grid-cols-[auto,1fr] gap-3 border-b border-slate-900/70 last:border-b-0 py-1.5">
-								<div class="text-[10px] uppercase tracking-[0.18em]
-									{lineTone(line) === 'call' ? 'text-sky-300' : ''}
-									{lineTone(line) === 'done' ? 'text-emerald-300' : ''}
-									{lineTone(line) === 'args' ? 'text-amber-300' : ''}
-									{lineTone(line) === 'result' ? 'text-violet-300' : ''}
-									{lineTone(line) === 'resume' ? 'text-cyan-300' : ''}
-									{lineTone(line) === 'plain' ? 'text-slate-500' : ''}
-								">
-									{linePrompt(line)}
+			<div class="px-4 py-3 space-y-3 max-h-[28rem] overflow-y-auto">
+				{#each sections.events as event}
+					{#if event.kind === 'tool'}
+						<div class="rounded-xl border {event.status === 'done' ? 'border-emerald-800/70 bg-emerald-950/20' : 'border-sky-800/70 bg-sky-950/20'} overflow-hidden">
+							<div class="flex items-center justify-between gap-3 px-3 py-2 border-b {event.status === 'done' ? 'border-emerald-900/60' : 'border-sky-900/60'}">
+								<div class="flex items-center gap-2 min-w-0">
+									<span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md text-[11px] font-bold {event.status === 'done' ? 'bg-emerald-400/20 text-emerald-200' : 'bg-sky-400/20 text-sky-200'}">
+										{event.status === 'done' ? '✓' : '>'}
+									</span>
+									<div>
+										<div class="text-[11px] uppercase tracking-[0.18em] {event.status === 'done' ? 'text-emerald-300' : 'text-sky-300'}">{event.status === 'done' ? 'Tool completed' : 'Tool call'}</div>
+										<div class="font-mono text-sm text-white break-all">{event.toolName}</div>
+									</div>
 								</div>
-								<pre class="whitespace-pre-wrap break-words overflow-x-auto
-									{lineTone(line) === 'call' ? 'text-sky-100' : ''}
-									{lineTone(line) === 'done' ? 'text-emerald-100' : ''}
-									{lineTone(line) === 'args' ? 'text-amber-100' : ''}
-									{lineTone(line) === 'result' ? 'text-violet-100' : ''}
-									{lineTone(line) === 'resume' ? 'text-cyan-100' : ''}
-									{lineTone(line) === 'plain' ? 'text-slate-200' : ''}
-								">{line}</pre>
 							</div>
-						{/each}
-						{#if sections.isLive}
-							<div class="flex items-center gap-2 pt-2 text-slate-400">
-								<span class="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-								<span>Streaming live from Hermes…</span>
+							<div class="px-3 py-3 space-y-3 text-xs font-mono">
+								{#if event.args}
+									<div>
+										<div class="mb-1 text-[10px] uppercase tracking-[0.18em] text-amber-300">Args</div>
+										<pre class="whitespace-pre-wrap break-words overflow-x-auto rounded-lg border border-amber-900/40 bg-black/30 px-3 py-2 text-amber-100">{event.args}</pre>
+									</div>
+								{/if}
+								{#if event.result}
+									<div>
+										<div class="mb-1 text-[10px] uppercase tracking-[0.18em] text-violet-300">Result</div>
+										<pre class="whitespace-pre-wrap break-words overflow-x-auto rounded-lg border border-violet-900/40 bg-black/30 px-3 py-2 text-violet-100">{event.result}</pre>
+									</div>
+								{/if}
 							</div>
-						{/if}
+						</div>
+					{:else}
+						<div class="rounded-xl border border-slate-800 bg-black/40 px-3 py-2 font-mono text-xs leading-6 {lineTone(event.line) === 'resume' ? 'text-cyan-100' : 'text-slate-200'}">
+							{event.line}
+						</div>
+					{/if}
+				{/each}
+				{#if sections.isLive}
+					<div class="flex items-center gap-2 pt-1 text-slate-400 text-sm">
+						<span class="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+						<span>Streaming live from Hermes…</span>
 					</div>
-				</div>
+				{/if}
 			</div>
 		</details>
 
@@ -158,7 +222,7 @@
 				<summary class="list-none cursor-pointer px-2 pt-2 pb-1 flex items-center justify-between gap-3">
 					<div>
 						<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Result</div>
-						<div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Final answer, minimized from the live console log above.</div>
+						<div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Final answer, separated from the live tool log above.</div>
 					</div>
 					<div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div>
 				</summary>

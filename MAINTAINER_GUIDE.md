@@ -60,7 +60,7 @@ User preferences for this project:
 ## Windows synced copy
 
 ```text
-C:\Users\DAngelo\Desktop\hermes-openwebui-gui
+C:\Users\<YourUser>\Desktop\hermes-openwebui-gui
 ```
 
 ## Open WebUI source checkout used for local patch/build work

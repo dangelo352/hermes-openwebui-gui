@@ -16,6 +16,7 @@
 	let busy = false;
 	let health: any = null;
 	let sessionMap: any = null;
+	let updateStatus: any = null;
 	let commandInput = '/gateway status';
 	let results: CommandResult[] = [];
 
@@ -71,15 +72,38 @@
 		}
 	}
 
+	async function triggerUpdateRebuild() {
+		busy = true;
+		try {
+			const res = await fetch(`${ADAPTER_BASE}/v1/admin/update-rebuild`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${API_KEY}`,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ git_pull: true })
+			});
+			if (!res.ok) throw new Error(await res.text());
+			updateStatus = await res.json();
+			toast.success('Update + rebuild started. The UI may restart while Docker rebuilds.');
+		} catch (err) {
+			toast.error(`${err}`);
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function refresh() {
 		loading = true;
 		try {
-			const [healthRes, sessionRes] = await Promise.all([
+			const [healthRes, sessionRes, updateRes] = await Promise.all([
 				fetchJson('/health'),
-				fetchJson('/v1/session-map')
+				fetchJson('/v1/session-map'),
+				fetchJson('/v1/admin/update-rebuild')
 			]);
 			health = healthRes;
 			sessionMap = sessionRes?.data ?? {};
+			updateStatus = updateRes;
 		} catch (err) {
 			toast.error(`${err}`);
 		} finally {
@@ -109,13 +133,14 @@
 					Workspace control surface for Hermes gateway, sessions, config, and operator actions.
 				</div>
 			</div>
-			<div class="flex gap-2">
+			<div class="flex gap-2 flex-wrap">
 				<button class="px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-sm" on:click={refresh}>Refresh</button>
 				<button class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm" on:click={() => runCommand('/gateway status', 'Gateway Status')}>Check Status</button>
+				<button class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm disabled:opacity-50" disabled={busy || updateStatus?.running} on:click={triggerUpdateRebuild}>Update + Rebuild</button>
 			</div>
 		</div>
 
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+		<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
 			<div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
 				<div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Adapter</div>
 				<div class="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{health?.status ?? 'unknown'}</div>
@@ -130,6 +155,11 @@
 				<div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Recommended Repair</div>
 				<div class="mt-2 text-sm text-gray-700 dark:text-gray-200 font-mono">scripts/fix_all.sh</div>
 				<div class="mt-1 text-sm text-gray-500 dark:text-gray-400">or scripts\fix_all.bat on Windows</div>
+			</div>
+			<div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+				<div class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Update Status</div>
+				<div class="mt-2 text-lg font-semibold text-gray-900 dark:text-gray-100">{updateStatus?.running ? 'Running' : 'Idle'}</div>
+				<div class="mt-1 text-sm text-gray-500 dark:text-gray-400 font-mono">{updateStatus?.log_path ?? 'state/update-rebuild.log'}</div>
 			</div>
 		</div>
 
@@ -193,6 +223,15 @@
 								</div>
 							{/each}
 						</div>
+					{/if}
+				</div>
+
+				<div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+					<div class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Update / Rebuild Log</div>
+					{#if updateStatus?.tail?.length > 0}
+						<pre class="whitespace-pre-wrap break-words text-xs text-gray-800 dark:text-gray-100 font-mono max-h-64 overflow-y-auto">{updateStatus.tail.join('\n')}</pre>
+					{:else}
+						<div class="text-sm text-gray-500 dark:text-gray-400">No update/rebuild log entries yet.</div>
 					{/if}
 				</div>
 

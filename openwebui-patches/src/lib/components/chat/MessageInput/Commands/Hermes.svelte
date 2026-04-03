@@ -12,17 +12,32 @@
 	let selectedIdx = 0;
 
 	const items = [
-		{ command: '/session', description: 'Show the mapped Hermes session for this chat', group: 'Session', backend: 'Hermes' },
+		{ command: '/help', description: 'Show full Hermes slash-command help', group: 'Info', backend: 'Hermes' },
+		{ command: '/commands', description: 'Show compact Hermes command list', group: 'Info', backend: 'Hermes' },
+		{ command: '/session', description: 'Show the mapped Hermes session for this Open WebUI chat', group: 'Session', backend: 'Hermes' },
 		{ command: '/new', description: 'Clear the mapped Hermes session for this chat', group: 'Session', backend: 'Hermes' },
 		{ command: '/resume ', description: 'Attach this chat to an existing Hermes session id', group: 'Session', backend: 'Hermes' },
+		{ command: '/status', description: 'Show session/gateway status summary', group: 'Info', backend: 'Hermes' },
+		{ command: '/profile', description: 'Show active profile information', group: 'Config', backend: 'Hermes' },
+		{ command: '/model', description: 'Show or change the active model', group: 'Config', backend: 'Hermes' },
+		{ command: '/provider', description: 'Show provider information', group: 'Config', backend: 'Hermes' },
 		{ command: '/gateway status', description: 'Show Hermes gateway status', group: 'Gateway', backend: 'Hermes' },
 		{ command: '/gateway restart', description: 'Restart the Hermes gateway service', group: 'Gateway', backend: 'Hermes' },
+		{ command: '/gateway start', description: 'Start the Hermes gateway service', group: 'Gateway', backend: 'Hermes' },
+		{ command: '/gateway stop', description: 'Stop the Hermes gateway service', group: 'Gateway', backend: 'Hermes' },
+		{ command: '/gateway setup', description: 'Interactive platform setup for Telegram, Discord, Slack, etc.', group: 'Gateway', backend: 'Hermes' },
 		{ command: '/sessions list', description: 'List Hermes sessions', group: 'Sessions', backend: 'Hermes' },
-		{ command: '/skills list', description: 'List installed Hermes skills', group: 'Knowledge', backend: 'Hermes' },
+		{ command: '/sessions browse', description: 'Browse Hermes sessions', group: 'Sessions', backend: 'Hermes' },
+		{ command: '/skills', description: 'Open Hermes skills command surface', group: 'Skills', backend: 'Hermes' },
+		{ command: '/skills list', description: 'List installed Hermes skills', group: 'Skills', backend: 'Hermes' },
+		{ command: '/skill ', description: 'Load a specific skill into the session', group: 'Skills', backend: 'Hermes' },
+		{ command: '/cron', description: 'Open Hermes cron command surface', group: 'Automation', backend: 'Hermes' },
 		{ command: '/cron list', description: 'List Hermes cron jobs', group: 'Automation', backend: 'Hermes' },
-		{ command: '/config', description: 'Show Hermes config summary', group: 'Ops', backend: 'Hermes' },
+		{ command: '/config', description: 'Show Hermes config summary', group: 'Config', backend: 'Hermes' },
 		{ command: '/doctor', description: 'Run Hermes diagnostics', group: 'Ops', backend: 'Hermes' },
+		{ command: '/tools', description: 'Show Hermes tool information', group: 'Ops', backend: 'Hermes' },
 		{ command: '/memory --help', description: 'Show Hermes memory CLI help', group: 'Memory', backend: 'Hermes' },
+		{ command: '/insights', description: 'Show usage analytics/insights', group: 'Info', backend: 'Hermes' },
 		{ command: '/hermes ', description: 'Run arbitrary non-interactive Hermes CLI args', group: 'Advanced', backend: 'Hermes' }
 	];
 
@@ -61,7 +76,7 @@
 		<span class="rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5">Backend: Hermes</span>
 	</div>
 	<div class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-		Run gateway/session/admin actions inline. Follow-up chat continues on the mapped Hermes session.
+		Official Hermes CLI-style commands, gateway actions, skills, sessions, and config shortcuts.
 	</div>
 </div>
 

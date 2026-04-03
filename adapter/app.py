@@ -12,6 +12,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from collections import deque
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +74,9 @@ CHAT_TIMEOUT_SECONDS = int(os.getenv("HERMES_TIMEOUT_SECONDS", str(DEFAULT_CHAT_
 COMMAND_TIMEOUT_SECONDS = int(os.getenv("HERMES_COMMAND_TIMEOUT_SECONDS", str(DEFAULT_COMMAND_TIMEOUT)))
 STATE_DIR = Path(os.getenv("HERMES_ADAPTER_STATE_DIR", str(Path(__file__).resolve().parents[1] / "state")))
 SESSION_MAP_PATH = STATE_DIR / "session_map.json"
+UPDATE_REBUILD_LOG_PATH = STATE_DIR / "update-rebuild.log"
+UPDATE_REBUILD_PID_PATH = STATE_DIR / "update-rebuild.pid"
+UPDATE_REBUILD_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "update_from_git_and_rebuild.sh"
 
 app = FastAPI(title="Hermes OpenAI Adapter", version="0.3.0")
 app.add_middleware(
@@ -115,6 +119,10 @@ class ModelCard(BaseModel):
 
 class HermesCommandRequest(BaseModel):
     command: str
+
+
+class UpdateRebuildRequest(BaseModel):
+    git_pull: bool = True
 
 
 def _ensure_state_dir() -> None:
@@ -310,7 +318,7 @@ def _sanitize_stream_line(text: str) -> str | None:
         "Result:",
     )
     if stripped.startswith(safe_prefixes):
-        return text
+        return text.replace('\r', '')
     return None
 
 
@@ -487,7 +495,22 @@ def _run_slash_command(command_text: str, context: dict[str, str | None]) -> str
         return _slash_help(compact=(command == "commands"))
     if command == "session":
         session_id = _get_mapped_session(chat_id, user_id)
-        return f"Mapped Hermes session for this chat: {session_id}" if session_id else "No Hermes session is currently mapped to this Open WebUI chat."
+        if session_id:
+            return (
+                f"Mapped Hermes session for this chat: `{session_id}`\n\n"
+                f"GUI model alias: `{MODEL_NAME}`\n"
+                "Follow-up turns can reuse this Hermes session, which is better for continuity and usually wastes fewer tokens."
+            )
+        return (
+            "No Hermes session is currently mapped to this Open WebUI chat.\n\n"
+            "What this means:\n"
+            "- slash commands still work\n"
+            "- follow-up chat still works\n"
+            "- but until a Hermes session gets mapped, normal follow-ups may need more prompt replay and can cost more tokens\n\n"
+            "How to fix it:\n"
+            "- send a normal chat message to create/map a Hermes session\n"
+            "- or use `/resume <session_id>` to attach an existing Hermes session"
+        )
     if command == "new":
         cleared = _clear_mapped_session(chat_id, user_id)
         return "Cleared the Hermes session mapping for this Open WebUI chat." if cleared else "There was no mapped Hermes session for this Open WebUI chat."
@@ -523,6 +546,53 @@ def _run_slash_command(command_text: str, context: dict[str, str | None]) -> str
     cmd = [HERMES_BIN, command, *args]
     result = _run_subprocess(cmd, COMMAND_TIMEOUT_SECONDS)
     return _format_command_result(result, cmd)
+
+
+def _tail_lines(path: Path, max_lines: int = 80) -> list[str]:
+    if not path.exists():
+        return []
+    return list(deque(path.read_text(encoding="utf-8", errors="replace").splitlines(), maxlen=max_lines))
+
+
+def _update_rebuild_status() -> dict[str, Any]:
+    pid = None
+    running = False
+    if UPDATE_REBUILD_PID_PATH.exists():
+        try:
+            pid = int(UPDATE_REBUILD_PID_PATH.read_text(encoding="utf-8").strip())
+            os.kill(pid, 0)
+            running = True
+        except Exception:
+            running = False
+    return {
+        "running": running,
+        "pid": pid,
+        "log_path": str(UPDATE_REBUILD_LOG_PATH),
+        "tail": _tail_lines(UPDATE_REBUILD_LOG_PATH),
+    }
+
+
+def _launch_update_rebuild(git_pull: bool = True) -> dict[str, Any]:
+    _ensure_state_dir()
+    if not UPDATE_REBUILD_SCRIPT.exists():
+        raise HTTPException(status_code=500, detail=f"Missing update script: {UPDATE_REBUILD_SCRIPT}")
+    status = _update_rebuild_status()
+    if status.get("running"):
+        return status
+
+    env = os.environ.copy()
+    env["HERMES_GUI_GIT_PULL"] = "1" if git_pull else "0"
+    log_handle = open(UPDATE_REBUILD_LOG_PATH, "a", encoding="utf-8")
+    process = subprocess.Popen(
+        ["bash", str(UPDATE_REBUILD_SCRIPT)],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        env=env,
+        start_new_session=True,
+    )
+    UPDATE_REBUILD_PID_PATH.write_text(str(process.pid), encoding="utf-8")
+    return _update_rebuild_status()
 
 
 def _build_openai_response(text: str, completion_id: str, created: int, model: str) -> JSONResponse:
@@ -562,6 +632,12 @@ def _gateway_overview() -> dict[str, Any]:
     cron = _run_hermes_cli_command("cron list")
     config = _run_hermes_cli_command("config")
     doctor = _run_hermes_cli_command("doctor")
+    profiles = _run_hermes_cli_command("profile list")
+    auth = _run_hermes_cli_command("auth list")
+    pairing = _run_hermes_cli_command("pairing list")
+    webhooks = _run_hermes_cli_command("webhook list")
+    plugins = _run_hermes_cli_command("plugins list")
+    tools = _run_hermes_cli_command("tools list --platform discord")
     with _STATE_LOCK:
         session_map = _load_session_map()
     return {
@@ -571,6 +647,12 @@ def _gateway_overview() -> dict[str, Any]:
         "cron": cron,
         "config": config,
         "doctor": doctor,
+        "profiles": profiles,
+        "auth": auth,
+        "pairing": pairing,
+        "webhooks": webhooks,
+        "plugins": plugins,
+        "tools": tools,
         "session_map": session_map,
         "session_map_count": len(session_map),
         "supported_channels": [
@@ -581,6 +663,7 @@ def _gateway_overview() -> dict[str, Any]:
             {"id": "signal", "name": "Signal", "setup_command": "gateway setup", "docs_slug": "signal"},
             {"id": "matrix", "name": "Matrix", "setup_command": "gateway setup", "docs_slug": "matrix"},
             {"id": "email", "name": "Email", "setup_command": "gateway setup", "docs_slug": "email"},
+            {"id": "mattermost", "name": "Mattermost", "setup_command": "gateway setup", "docs_slug": "mattermost"},
             {"id": "open-webui", "name": "Open WebUI", "setup_command": "gateway setup", "docs_slug": "open-webui"},
         ],
     }
@@ -597,14 +680,16 @@ def _build_streaming_response(text: str, completion_id: str, created: int, model
         }
         yield f"data: {json.dumps(first, ensure_ascii=False)}\n\n"
 
-        chunk = {
-            "id": completion_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
-        }
-        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        for piece in _chunk_text_for_stream(text):
+            chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}],
+            }
+            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.01)
 
         end = {
             "id": completion_id,
@@ -633,6 +718,25 @@ def _sse_chunk(completion_id: str, created: int, model: str, content: str | None
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
     }
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _chunk_text_for_stream(text: str, chunk_size: int = 120) -> list[str]:
+    if not text:
+        return []
+    normalized = text.replace("\r\n", "\n")
+    chunks: list[str] = []
+    buffer = ""
+    for token in re.split(r"(\s+)", normalized):
+        if not token:
+            continue
+        if len(buffer) + len(token) > chunk_size and buffer:
+            chunks.append(buffer)
+            buffer = token
+        else:
+            buffer += token
+    if buffer:
+        chunks.append(buffer)
+    return chunks
 
 
 def _build_live_chat_streaming_response(
@@ -687,7 +791,12 @@ def _build_live_chat_streaming_response(
         else:
             final_text = _extract_text(full_output)
             if final_text:
-                yield _sse_chunk(completion_id, created, model, content=f"\n\n{final_text}\n")
+                prefix = "\n\n" if collected else ""
+                suffix = "\n"
+                pieces = _chunk_text_for_stream(prefix + final_text + suffix)
+                for piece in pieces:
+                    yield _sse_chunk(completion_id, created, model, content=piece)
+                    await asyncio.sleep(0.01)
             if session_id and context.get("chat_id"):
                 _set_mapped_session(context.get("chat_id"), context.get("user_id"), session_id)
 
@@ -729,6 +838,16 @@ def hermes_command(payload: HermesCommandRequest) -> dict[str, Any]:
     result = _run_hermes_cli_command(normalized)
     result["mode"] = "cli"
     return result
+
+
+@app.get("/v1/admin/update-rebuild")
+def update_rebuild_status() -> dict[str, Any]:
+    return _update_rebuild_status()
+
+
+@app.post("/v1/admin/update-rebuild")
+def update_rebuild_start(payload: UpdateRebuildRequest) -> dict[str, Any]:
+    return _launch_update_rebuild(git_pull=payload.git_pull)
 
 
 @app.post("/v1/chat/completions")

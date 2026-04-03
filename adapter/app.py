@@ -299,27 +299,37 @@ def _format_command_result(result: subprocess.CompletedProcess[str], cmd: list[s
     return "\n".join(parts).strip()
 
 
-def _slash_help() -> str:
+def _slash_help(compact: bool = False) -> str:
+    if compact:
+        return "\n".join(
+            [
+                "Hermes commands:",
+                "/session  /new  /resume <id>",
+                "/gateway status  /sessions list  /skills list",
+                "/cron list  /config  /doctor",
+                "/hermes <args>",
+                "Use /help for the full list.",
+            ]
+        )
+
     return """Hermes slash commands in Open WebUI
 
 Adapter-managed:
-- /help
+- /help               Full command help
 - /session            Show mapped Hermes session for this Open WebUI chat
 - /new                Clear the mapped Hermes session for this chat
 - /resume <session>   Attach this Open WebUI chat to an existing Hermes session
 - /hermes <args>      Run any non-interactive Hermes CLI command
 
-Direct passthrough examples:
-- /sessions list
-- /sessions browse
+Common commands:
 - /gateway status
 - /gateway restart
+- /sessions list
 - /skills list
-- /memory --help
-- /config
 - /cron list
+- /config
 - /doctor
-- /tools
+- /memory --help
 
 Notes:
 - Normal messages still go through Hermes chat mode.
@@ -349,15 +359,17 @@ def _run_slash_command(command_text: str, context: dict[str, str | None]) -> str
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid slash command: {exc}") from exc
     if not parts:
-        return _slash_help()
+        return _slash_help(compact=True)
 
     command = parts[0]
     args = parts[1:]
     chat_id = context.get("chat_id")
     user_id = context.get("user_id")
 
-    if command == "help":
-        return _slash_help()
+    if command in {"help", "commands"}:
+        if args and args[0] == "full":
+            return _slash_help(compact=False)
+        return _slash_help(compact=(command == "commands"))
     if command == "session":
         session_id = _get_mapped_session(chat_id, user_id)
         return f"Mapped Hermes session for this chat: {session_id}" if session_id else "No Hermes session is currently mapped to this Open WebUI chat."
@@ -380,6 +392,17 @@ def _run_slash_command(command_text: str, context: dict[str, str | None]) -> str
         raise HTTPException(
             status_code=400,
             detail="Interactive `chat` is not supported through slash passthrough. Use normal chat messages or `/chat -q \"your prompt\"`.",
+        )
+
+    known_commands = {
+        "chat", "gateway", "sessions", "skills", "cron", "doctor", "config", "memory", "tools", "model",
+        "webhook", "pairing", "plugins", "mcp", "status", "insights", "auth", "login", "logout", "setup",
+        "whatsapp", "profile", "version", "update", "completion",
+    }
+    if command not in known_commands:
+        return (
+            f"Unknown Hermes slash command: /{command}\n\n"
+            + _slash_help(compact=True)
         )
 
     cmd = [HERMES_BIN, command, *args]

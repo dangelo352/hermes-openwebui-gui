@@ -127,6 +127,12 @@ Compatibility notes
 - Non-streaming and basic streaming are supported.
 - Conversation state persists across GUI turns through session mapping when Open WebUI forwards the chat id.
 - On Linux, the launcher automatically adds host.docker.internal -> host-gateway for the container.
+- On Windows, the adapter now forces Hermes subprocesses into a more non-interactive/CI-style mode to avoid prompt_toolkit console errors in launcher-driven or background runs.
+
+Windows troubleshooting
+- Preferred updater/rebuilder: `update-webui-easy.bat`
+- Preferred repair entrypoint: `fix-hermes-openwebui.bat`
+- If a user sees `prompt_toolkit.output.win32.NoConsoleScreenBufferError`, they are hitting a non-console Windows execution path. Update to the latest repo and re-run one of the preferred batch files above.
 
 Slash commands in Open WebUI
 - /help

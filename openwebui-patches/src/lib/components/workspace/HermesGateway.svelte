@@ -109,6 +109,9 @@
 	let skillsResult: CommandResult | null = null;
 	let installIdentifier = '';
 	let selectedChannel = 'discord';
+	let configView = 'overview';
+	let configExpandAll = false;
+	let channelExpandAll = false;
 
 	const quickActions = [
 		{ label: 'Gateway Status', command: '/gateway status' },
@@ -232,6 +235,41 @@
 		}
 	};
 
+	const fileLineCount = (text: string) => (text ? text.split(/\r?\n/).filter((line, index, lines) => !(index === lines.length - 1 && line === '')).length : 0);
+
+	const envEntries = () => Object.entries(configFiles?.env?.values ?? {});
+	const topLevelConfigEntries = () => Object.entries((configFiles?.config?.values ?? {}) as Record<string, any>);
+	const channelDirectoryEntries = () => Object.entries((configFiles?.channel_directory ?? {}) as Record<string, any>);
+
+	const envGroups = () => {
+		const groups: Record<string, Array<[string, string]>> = {};
+		for (const [key, value] of envEntries()) {
+			const prefix = key.includes('_') ? key.split('_')[0] : 'OTHER';
+			(groups[prefix] ||= []).push([key, value]);
+		}
+		return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+	};
+
+	const markdownFence = (language: string, body: string) => `\`\`\`${language}\n${body || ''}\n\`\`\``;
+	const stringifyBlock = (value: any) => (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+	const summarizeValue = (value: any) => {
+		if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+		if (value && typeof value === 'object') return `${Object.keys(value).length} key${Object.keys(value).length === 1 ? '' : 's'}`;
+		if (typeof value === 'boolean') return value ? 'true' : 'false';
+		if (value === '' || value == null) return 'empty';
+		return String(value);
+	};
+
+	const visibleEnvValue = (key: string) => getEnvMaskedValue(key) || getEnvValue(key) || 'Not set';
+	const allConfigViews = ['overview', 'config', 'env', 'channels', 'logs'];
+	const configViews = [
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'config', label: 'config.yaml' },
+		{ id: 'env', label: '.env' },
+		{ id: 'channels', label: 'channel directory' },
+		{ id: 'logs', label: 'gateway log' }
+	];
+
 	onMount(async () => {
 		await refresh();
 	});
@@ -314,36 +352,75 @@
 						</div>
 
 						<div class="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4">
-								<div class="text-sm font-semibold mb-3">Environment</div>
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-gradient-to-b from-white to-gray-50/60 dark:from-black/20 dark:to-black/5">
+								<div class="flex items-center justify-between gap-3 mb-3">
+									<div>
+										<div class="text-sm font-semibold">Environment variables</div>
+										<div class="text-xs text-gray-500">Organized setup fields for this channel.</div>
+									</div>
+									<button class="px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-gray-100 dark:bg-gray-850 dark:hover:bg-gray-800 text-xs transition" on:click={() => (channelExpandAll = !channelExpandAll)}>{channelExpandAll ? 'Collapse all' : 'Expand all'}</button>
+								</div>
 								<div class="space-y-3">
 									{#each selectedChannelDef().envKeys as envKey}
-										<div class="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
-											<div class="text-xs uppercase tracking-wide text-gray-500">{envKey}</div>
-											<input class="mt-2 w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" value={getEnvValue(envKey)} placeholder={getEnvMaskedValue(envKey)} on:change={(e) => saveEnv(envKey, e.currentTarget.value)} disabled={saving} />
-										</div>
+										<details class="group rounded-2xl border border-gray-100 dark:border-gray-850 bg-white/90 dark:bg-black/20 overflow-hidden" open={channelExpandAll}>
+											<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3">
+												<div>
+													<div class="text-xs uppercase tracking-wide text-gray-500">{envKey}</div>
+													<div class="mt-1 text-sm text-gray-700 dark:text-gray-300 line-clamp-1">{visibleEnvValue(envKey)}</div>
+												</div>
+												<div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div>
+											</summary>
+											<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/30">
+												<div class="text-xs text-gray-500 mb-2">Current value preview</div>
+												<div class="rounded-xl bg-white dark:bg-black/30 border border-gray-100 dark:border-gray-800 px-3 py-2 text-xs font-mono break-all">{visibleEnvValue(envKey)}</div>
+												<input class="mt-3 w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" value={getEnvValue(envKey)} placeholder={getEnvMaskedValue(envKey)} on:change={(e) => saveEnv(envKey, e.currentTarget.value)} disabled={saving} />
+											</div>
+										</details>
 									{/each}
 								</div>
 							</div>
-							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4">
-								<div class="text-sm font-semibold mb-3">Config Paths</div>
+							<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-gradient-to-b from-white to-gray-50/60 dark:from-black/20 dark:to-black/5">
+								<div class="text-sm font-semibold mb-1">Structured config paths</div>
+								<div class="text-xs text-gray-500 mb-3">Readable per-setting controls instead of a raw YAML wall.</div>
 								<div class="space-y-3">
 									{#if selectedChannelDef().configPaths.length === 0}
-										<div class="text-sm text-gray-500">No structured config paths defined for this channel yet.</div>
+										<div class="rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 px-4 py-6 text-sm text-gray-500 bg-gray-50/70 dark:bg-gray-950/20">No structured config paths defined for this channel yet.</div>
 									{/if}
 									{#each selectedChannelDef().configPaths as configPath}
-										<div class="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
-											<div class="text-xs uppercase tracking-wide text-gray-500">{configPath}</div>
-											<input class="mt-2 w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" value={String(getConfigValue(configPath) ?? '')} on:change={(e) => saveConfig(configPath, e.currentTarget.value)} disabled={saving} />
-										</div>
+										<details class="group rounded-2xl border border-gray-100 dark:border-gray-850 bg-white/90 dark:bg-black/20 overflow-hidden" open={channelExpandAll}>
+											<summary class="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3">
+												<div>
+													<div class="text-xs uppercase tracking-wide text-gray-500">{configPath}</div>
+													<div class="mt-1 text-sm text-gray-700 dark:text-gray-300">{summarizeValue(getConfigValue(configPath))}</div>
+												</div>
+												<div class="text-xs text-gray-400 group-open:rotate-180 transition">⌄</div>
+											</summary>
+											<div class="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/30">
+												<div class="rounded-xl bg-white dark:bg-black/30 border border-gray-100 dark:border-gray-800 px-3 py-2 text-xs font-mono break-all">{String(getConfigValue(configPath) ?? '') || 'Not set'}</div>
+												<input class="mt-3 w-full rounded-xl border border-gray-100 dark:border-gray-800 bg-transparent px-3 py-2 text-sm outline-hidden" value={String(getConfigValue(configPath) ?? '')} on:change={(e) => saveConfig(configPath, e.currentTarget.value)} disabled={saving} />
+											</div>
+										</details>
 									{/each}
 								</div>
 							</div>
 						</div>
 
-						<div class="mt-4 rounded-2xl border border-gray-100 dark:border-gray-850 p-4">
-							<div class="text-sm font-semibold">Discovered Channels / Directory</div>
-							<pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{JSON.stringify(configFiles?.channel_directory ?? {}, null, 2)}</pre>
+						<div class="mt-4 rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20">
+							<div class="flex items-center justify-between gap-3 flex-wrap">
+								<div>
+									<div class="text-sm font-semibold">Discovered channels</div>
+									<div class="text-xs text-gray-500">Structured overview plus raw JSON when needed.</div>
+								</div>
+								<Badge>{channelDirectoryEntries().length} entries</Badge>
+							</div>
+							<div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+								{#each channelDirectoryEntries() as [channelId, value]}
+									<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-gray-50/70 dark:bg-gray-950/20 p-4">
+										<div class="flex items-center justify-between gap-3"><div class="font-semibold">{channelId}</div><Badge>{summarizeValue(value)}</Badge></div>
+										<pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-white dark:bg-black/30 rounded-xl p-3 overflow-x-auto border border-gray-100 dark:border-gray-800">{stringifyBlock(value)}</pre>
+									</div>
+								{/each}
+							</div>
 						</div>
 					</div>
 				</div>

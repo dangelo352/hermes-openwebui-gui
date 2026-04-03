@@ -22,6 +22,8 @@ What is new now
 - Open WebUI container startup with host routing that also works on Linux
 - Persistent Hermes session mapping keyed by Open WebUI chat id
 - Slash command support in the GUI for Hermes CLI passthrough and adapter session controls
+- Patched Open WebUI frontend image is now the default so `/` opens a Hermes command overlay instead of the stock weird slash token UX
+- Automatic Open WebUI source clone/patch/build flow for the patched GUI image
 
 GitHub repo
 - https://github.com/dangelo352/hermes-openwebui-gui
@@ -74,6 +76,8 @@ Useful commands
 - python launcher.py stop
 - python launcher.py restart
 - python launcher.py status
+- python launcher.py build-webui
+- python launcher.py rebuild-webui
 - python launcher.py start --no-browser
 
 Environment overrides
@@ -128,7 +132,8 @@ Chat UI integration
 - The repo now also contains source patches for Open WebUI chat input and response rendering
 - These patches replace the default `/` prompt menu with a Hermes command overlay
 - They also add a custom coding-response block for Hermes tool activity traces
-- Apply them to an Open WebUI source checkout with:
+- By default the launcher now builds and runs a patched image named `hermes-openwebui-patched:<ref>`
+- Manual patching is still available if you want to work on an Open WebUI source checkout directly:
   - macOS/Linux: `./scripts/apply_openwebui_chat_patches.sh /path/to/open-webui`
   - Windows: `scripts\apply_openwebui_chat_patches.bat C:\path\to\open-webui`
 

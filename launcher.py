@@ -299,7 +299,7 @@ def install_workspace_assets() -> None:
     if not INSTALL_WORKSPACE_ASSETS_SCRIPT.exists():
         log("Workspace asset installer not found; skipping")
         return
-    run([sys.executable, str(INSTALL_WORKSPACE_ASSETS_SCRIPT)])
+    run([str(venv_python()), str(INSTALL_WORKSPACE_ASSETS_SCRIPT)])
 
 
 def start_openwebui() -> None:

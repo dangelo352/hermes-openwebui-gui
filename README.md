@@ -29,12 +29,15 @@ GitHub repo
 Project layout
 - adapter/app.py                                   FastAPI OpenAI-compatible wrapper
 - workspace/hermes_control_tool.py                 Hermes Workspace tool for Open WebUI
+- openwebui-patches/...                            Source patches for Open WebUI chat slash overlay UI
 - launcher.py                                      Cross-platform all-in-one launcher
 - requirements.txt                                 Adapter dependencies
 - start-hermes-openwebui.bat                       Windows one-click launcher
 - start-hermes-openwebui.command                   macOS/Linux one-click launcher
-- scripts/install_openwebui_workspace_assets.py   Creates/updates the Hermes Control tool in Workspace
+- scripts/install_openwebui_workspace_assets.py    Creates/updates the Hermes Control tool in Workspace
 - scripts/run_openwebui_docker.sh                  Starts Open WebUI and installs workspace assets
+- scripts/apply_openwebui_chat_patches.sh          Applies chat UI patches to an Open WebUI source checkout
+- scripts/apply_openwebui_chat_patches.bat         Windows helper for applying chat UI patches
 - scripts/                                         Helper scripts and compatibility utilities
 - docker-compose.yml                               Optional Docker deployment
 - HERMES_OPENWEBUI_SETUP_COMPLETE.md               Original setup notes
@@ -114,6 +117,13 @@ Workspace integration
   - session mapping actions
   - arbitrary Hermes slash-command execution
   - arbitrary Hermes CLI passthrough via `/hermes ...`
+
+Chat UI integration
+- The repo now also contains source patches for Open WebUI chat input
+- These patches replace the default `/` prompt menu with a Hermes command overlay
+- Apply them to an Open WebUI source checkout with:
+  - macOS/Linux: `./scripts/apply_openwebui_chat_patches.sh /path/to/open-webui`
+  - Windows: `scripts\apply_openwebui_chat_patches.bat C:\path\to\open-webui`
 
 Notes
 - "No setup needed" here means the launcher bootstraps the adapter environment automatically from this folder.

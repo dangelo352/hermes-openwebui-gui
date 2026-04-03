@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import threading
 import time
@@ -17,9 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-
-DEFAULT_HERMES_BIN = "/root/.hermes/hermes-agent/venv/bin/hermes"
-DEFAULT_HERMES_WORKDIR = "/root/.hermes/hermes-agent"
 DEFAULT_MODEL_NAME = "hermes-gui"
 DEFAULT_API_KEY = "hermes-local"
 DEFAULT_SOURCE = "tool"
@@ -29,18 +27,54 @@ HEADER_CHAT_ID = "X-OpenWebUI-Chat-Id"
 HEADER_MESSAGE_ID = "X-OpenWebUI-Message-Id"
 HEADER_USER_ID = "X-OpenWebUI-User-Id"
 
-HERMES_BIN = os.getenv("HERMES_BIN", DEFAULT_HERMES_BIN)
-HERMES_WORKDIR = os.getenv("HERMES_WORKDIR", DEFAULT_HERMES_WORKDIR)
+
+def _default_hermes_candidates() -> list[Path]:
+    home = Path.home()
+    candidates = [
+        home / ".hermes" / "hermes-agent" / "venv" / "bin" / "hermes",
+        home / ".hermes" / "hermes-agent" / "venv" / "Scripts" / "hermes.exe",
+        home / ".hermes" / "bin" / "hermes",
+        home / ".local" / "bin" / "hermes",
+    ]
+    found = shutil.which("hermes")
+    if found:
+        candidates.insert(0, Path(found))
+    return candidates
+
+
+def _resolve_hermes_bin() -> str:
+    override = os.getenv("HERMES_BIN")
+    if override:
+        return override
+    for candidate in _default_hermes_candidates():
+        if candidate.exists():
+            return str(candidate)
+    return "hermes"
+
+
+def _resolve_hermes_workdir(hermes_bin: str) -> str:
+    override = os.getenv("HERMES_WORKDIR")
+    if override:
+        return override
+    bin_path = Path(hermes_bin).expanduser()
+    for parent in [bin_path.parent, *bin_path.parents]:
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
+            return str(parent)
+    default_home = Path.home() / ".hermes" / "hermes-agent"
+    return str(default_home if default_home.exists() else Path.cwd())
+
+
+HERMES_BIN = _resolve_hermes_bin()
+HERMES_WORKDIR = _resolve_hermes_workdir(HERMES_BIN)
 MODEL_NAME = os.getenv("HERMES_OPENAI_MODEL", DEFAULT_MODEL_NAME)
 API_KEY = os.getenv("HERMES_OPENAI_API_KEY", DEFAULT_API_KEY)
-DEFAULT_SOURCE = os.getenv("HERMES_SOURCE", DEFAULT_SOURCE)
+HERMES_SOURCE = os.getenv("HERMES_SOURCE", DEFAULT_SOURCE)
 CHAT_TIMEOUT_SECONDS = int(os.getenv("HERMES_TIMEOUT_SECONDS", str(DEFAULT_CHAT_TIMEOUT)))
 COMMAND_TIMEOUT_SECONDS = int(os.getenv("HERMES_COMMAND_TIMEOUT_SECONDS", str(DEFAULT_COMMAND_TIMEOUT)))
 STATE_DIR = Path(os.getenv("HERMES_ADAPTER_STATE_DIR", str(Path(__file__).resolve().parents[1] / "state")))
 SESSION_MAP_PATH = STATE_DIR / "session_map.json"
 
-
-app = FastAPI(title="Hermes OpenAI Adapter", version="0.2.0")
+app = FastAPI(title="Hermes OpenAI Adapter", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -88,14 +122,14 @@ def _load_session_map() -> dict[str, Any]:
     if not SESSION_MAP_PATH.exists():
         return {}
     try:
-        return json.loads(SESSION_MAP_PATH.read_text())
+        return json.loads(SESSION_MAP_PATH.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
 def _save_session_map(data: dict[str, Any]) -> None:
     _ensure_state_dir()
-    SESSION_MAP_PATH.write_text(json.dumps(data, indent=2, sort_keys=True))
+    SESSION_MAP_PATH.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _session_key(chat_id: str | None, user_id: str | None) -> str | None:
@@ -190,23 +224,27 @@ def _build_prompt(messages: list[ChatMessage]) -> str:
     return "\n".join(lines).strip()
 
 
+def _get_last_user_message(messages: list[ChatMessage]) -> str:
+    for msg in reversed(messages):
+        if msg.role == "user":
+            return _normalize_content(msg.content).strip()
+    return ""
+
+
 def _build_incremental_prompt(messages: list[ChatMessage]) -> str:
     latest_user = _get_last_user_message(messages)
     if latest_user:
         return latest_user
-
     for msg in reversed(messages):
         content = _normalize_content(msg.content).strip()
         if content:
             return content
-
     raise HTTPException(status_code=400, detail="No usable message content found")
 
 
 def _extract_text(stdout: str) -> str:
     text = stdout.strip()
     text = re.sub(r"^↻ Resumed session [^\n]+\n\n", "", text)
-    text = re.sub(r"^╭─ .*?╮\n", "", text, count=1, flags=re.DOTALL)
     text = re.sub(r"\n*session_id:\s*[^\n]+\s*$", "", text, flags=re.MULTILINE)
     return text.strip()
 
@@ -234,7 +272,7 @@ def _run_subprocess(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
 
 
 def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[str, str | None]:
-    cmd = [HERMES_BIN, "chat", "-Q", "--source", DEFAULT_SOURCE]
+    cmd = [HERMES_BIN, "chat", "-Q", "--source", HERMES_SOURCE]
     if resume_session:
         cmd.extend(["--resume", resume_session])
     cmd.extend(["-q", prompt])
@@ -251,8 +289,7 @@ def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[st
 def _format_command_result(result: subprocess.CompletedProcess[str], cmd: list[str]) -> str:
     out = (result.stdout or "").strip()
     err = (result.stderr or "").strip()
-    parts = [f"$ {' '.join(shlex.quote(part) for part in cmd[1:])}"]
-    parts.append(f"exit_code: {result.returncode}")
+    parts = [f"$ {' '.join(shlex.quote(part) for part in cmd[1:])}", f"exit_code: {result.returncode}"]
     if out:
         parts.append("stdout:")
         parts.append(out)
@@ -288,14 +325,7 @@ Notes:
 - Normal messages still go through Hermes chat mode.
 - Slash commands run Hermes CLI directly.
 - Interactive commands may not work from the GUI unless they support non-interactive flags.
-- Persistent session mapping now uses the Open WebUI chat id when it is forwarded by Open WebUI."""
-
-
-def _get_last_user_message(messages: list[ChatMessage]) -> str:
-    for msg in reversed(messages):
-        if msg.role == "user":
-            return _normalize_content(msg.content).strip()
-    return ""
+- Persistent session mapping uses the Open WebUI chat id when it is forwarded by Open WebUI."""
 
 
 def _extract_context(request: Request, payload: ChatCompletionRequest) -> dict[str, str | None]:
@@ -314,12 +344,10 @@ def _extract_context(request: Request, payload: ChatCompletionRequest) -> dict[s
 def _run_slash_command(command_text: str, context: dict[str, str | None]) -> str:
     if not command_text.startswith("/"):
         raise HTTPException(status_code=400, detail="Slash command must start with '/'")
-
     try:
         parts = shlex.split(command_text[1:])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid slash command: {exc}") from exc
-
     if not parts:
         return _slash_help()
 
@@ -330,34 +358,23 @@ def _run_slash_command(command_text: str, context: dict[str, str | None]) -> str
 
     if command == "help":
         return _slash_help()
-
     if command == "session":
         session_id = _get_mapped_session(chat_id, user_id)
-        if session_id:
-            return f"Mapped Hermes session for this chat: {session_id}"
-        return "No Hermes session is currently mapped to this Open WebUI chat."
-
+        return f"Mapped Hermes session for this chat: {session_id}" if session_id else "No Hermes session is currently mapped to this Open WebUI chat."
     if command == "new":
         cleared = _clear_mapped_session(chat_id, user_id)
-        return (
-            "Cleared the Hermes session mapping for this Open WebUI chat."
-            if cleared
-            else "There was no mapped Hermes session for this Open WebUI chat."
-        )
-
+        return "Cleared the Hermes session mapping for this Open WebUI chat." if cleared else "There was no mapped Hermes session for this Open WebUI chat."
     if command == "resume":
         if not args:
             raise HTTPException(status_code=400, detail="Usage: /resume <hermes_session_id>")
         session_id = args[0]
         _set_mapped_session(chat_id, user_id, session_id)
         return f"Mapped this Open WebUI chat to Hermes session: {session_id}"
-
     if command == "hermes":
         if not args:
             raise HTTPException(status_code=400, detail="Usage: /hermes <args>")
-        parts = args
-        command = parts[0]
-        args = parts[1:]
+        command = args[0]
+        args = args[1:]
 
     if command == "chat" and not any(flag in args for flag in ["-q", "--query"]):
         raise HTTPException(
@@ -377,13 +394,7 @@ def _build_openai_response(text: str, completion_id: str, created: int, model: s
             "object": "chat.completion",
             "created": created,
             "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": text},
-                    "finish_reason": "stop",
-                }
-            ],
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
     )
@@ -424,7 +435,7 @@ def _build_streaming_response(text: str, completion_id: str, created: int, model
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "model": MODEL_NAME}
+    return {"status": "ok", "model": MODEL_NAME, "hermes_bin": HERMES_BIN, "hermes_workdir": HERMES_WORKDIR}
 
 
 @app.get("/v1/models")
@@ -442,7 +453,6 @@ def session_map() -> dict[str, Any]:
 async def chat_completions(request: Request, payload: ChatCompletionRequest):
     if request.headers.get("Authorization") not in {None, "", f"Bearer {API_KEY}"}:
         raise HTTPException(status_code=401, detail="Invalid API key")
-
     if not payload.messages:
         raise HTTPException(status_code=400, detail="messages is required")
 
@@ -454,9 +464,7 @@ async def chat_completions(request: Request, payload: ChatCompletionRequest):
 
     if latest_user_message.startswith("/"):
         text = await asyncio.to_thread(_run_slash_command, latest_user_message, context)
-        if payload.stream:
-            return _build_streaming_response(text, completion_id, created, model)
-        return _build_openai_response(text, completion_id, created, model)
+        return _build_streaming_response(text, completion_id, created, model) if payload.stream else _build_openai_response(text, completion_id, created, model)
 
     mapped_session = _get_mapped_session(context.get("chat_id"), context.get("user_id"))
     prompt = _build_incremental_prompt(payload.messages) if mapped_session else _build_prompt(payload.messages)
@@ -465,9 +473,7 @@ async def chat_completions(request: Request, payload: ChatCompletionRequest):
     if session_id and context.get("chat_id"):
         _set_mapped_session(context.get("chat_id"), context.get("user_id"), session_id)
 
-    if payload.stream:
-        return _build_streaming_response(text, completion_id, created, model)
-    return _build_openai_response(text, completion_id, created, model)
+    return _build_streaming_response(text, completion_id, created, model) if payload.stream else _build_openai_response(text, completion_id, created, model)
 
 
 @app.get("/")

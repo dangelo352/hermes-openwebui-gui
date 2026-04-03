@@ -23,5 +23,14 @@ done
 cmd.exe /c "docker rm -f ${CONTAINER}" >/dev/null 2>&1 || true
 cmd.exe /c "docker run -d -p 8080:8080 -e ENABLE_OPENAI_API=True -e ENABLE_FORWARD_USER_INFO_HEADERS=True -e OPENAI_API_BASE_URL=${ADAPTER_URL} -e OPENAI_API_KEY=${API_KEY} -e WEBUI_AUTH=${WEBUI_AUTH_VALUE} -v ${DATA_VOLUME}:/app/backend/data --name ${CONTAINER} --restart unless-stopped ${IMAGE}"
 
+echo "Waiting for Open WebUI HTTP health..."
+until curl -fsS http://127.0.0.1:8080/health >/dev/null 2>&1; do
+  sleep 3
+done
+
+echo "Installing Hermes workspace assets into Open WebUI..."
+python3 "$(dirname "$0")/install_openwebui_workspace_assets.py"
+
 echo "Open WebUI container started."
 echo "URL: http://127.0.0.1:8080"
+echo "Workspace tool installed: Hermes Control"

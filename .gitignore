@@ -7,4 +7,5 @@ state/
 .env
 .webui_secret_key
 *.log
+*.pid
 .DS_Store

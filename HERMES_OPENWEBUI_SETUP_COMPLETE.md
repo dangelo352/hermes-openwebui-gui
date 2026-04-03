@@ -40,6 +40,8 @@ That project contains:
   - FastAPI app that exposes OpenAI-compatible endpoints for Open WebUI
 - `requirements.txt`
   - Python dependencies for the adapter
+- `workspace/hermes_control_tool.py`
+  - Workspace > Tools asset that exposes Hermes control actions inside Open WebUI
 - `.env.openwebui`
   - Open WebUI environment values pointing it to the adapter
 - `scripts/install_all.sh`
@@ -185,6 +187,24 @@ If a session is already mapped, it resumes that Hermes session by adding:
 - `--resume <session_id>`
 
 That is why it is really using your Hermes.
+
+## Workspace integration added
+
+A Workspace-compatible integration was added without needing a custom sidebar.
+
+Open WebUI now gets a Workspace > Tools asset named:
+- `Hermes Control`
+
+That tool is installed automatically after Open WebUI starts and gives you Workspace-visible Hermes controls for:
+- adapter health
+- session map
+- gateway status
+- sessions list
+- skills list
+- cron list
+- arbitrary Hermes slash-command execution
+
+This follows your preference to keep extra functionality under existing Open WebUI workspace areas instead of building a whole custom sidebar.
 
 ## Current runtime status
 

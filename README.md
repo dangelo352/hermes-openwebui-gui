@@ -1,8 +1,9 @@
 Hermes + Open WebUI GUI
 
 What this is
-- A local OpenAI-compatible adapter that turns your existing Hermes CLI setup into a backend Open WebUI can talk to.
-- It reuses your existing Hermes home directory at /root/.hermes, so your current model/provider config, Discord settings, skills, memories, TTS/STT preferences, and other Hermes behavior stay in place.
+- A cross-platform launcher for running Open WebUI against your existing Hermes CLI install.
+- Works on macOS, Windows, and Linux from one repo.
+- One command or double-click starts the adapter, boots Docker if needed, launches Open WebUI, and opens the browser.
 
 What gets reused from Hermes
 - ~/.hermes/config.yaml
@@ -12,52 +13,79 @@ What gets reused from Hermes
 - Your current model/provider defaults unless you change them in Hermes itself
 
 What is new now
-- Persistent Hermes session mapping keyed by Open WebUI chat id when Open WebUI forwards session headers
-- Token-saving resumed chat mode: once a Hermes session is mapped, the adapter sends only the latest user turn instead of rebuilding the entire transcript every time
+- Cross-platform Python launcher: launcher.py
+- Windows double-click starter: start-hermes-openwebui.bat
+- macOS/Linux double-click starter: start-hermes-openwebui.command
+- Automatic adapter venv bootstrap and dependency install
+- Automatic Hermes CLI path detection on macOS, Windows, and Linux
+- Automatic Docker Desktop startup on macOS and Windows
+- Open WebUI container startup with host routing that also works on Linux
+- Persistent Hermes session mapping keyed by Open WebUI chat id
 - Slash command support in the GUI for Hermes CLI passthrough and adapter session controls
-- Windows launcher batch file
 
 GitHub repo
 - https://github.com/dangelo352/hermes-openwebui-gui
 
 Project layout
-- adapter/app.py                        FastAPI OpenAI-compatible wrapper
-- requirements.txt                     Adapter dependencies
-- .env.openwebui                       Open WebUI environment preconfigured for the adapter
-- scripts/install_all.sh               Bootstraps the adapter environment automatically
-- scripts/run_openwebui_docker.sh      Starts Open WebUI in Docker Desktop from WSL
-- scripts/install_windows_wsl.sh       Syncs the project to the Windows desktop copy
-- scripts/start_adapter.sh             Starts the Hermes adapter on port 8001
-- scripts/start_openwebui.sh           Starts Open WebUI on port 8080
-- windows-start-hermes-openwebui.bat   Windows one-click launcher
-- docker-compose.yml                   Optional Docker deployment if Docker is available
-- HERMES_OPENWEBUI_SETUP_COMPLETE.md   In-depth setup and architecture notes
+- adapter/app.py                                   FastAPI OpenAI-compatible wrapper
+- workspace/hermes_control_tool.py                 Hermes Workspace tool for Open WebUI
+- launcher.py                                      Cross-platform all-in-one launcher
+- requirements.txt                                 Adapter dependencies
+- start-hermes-openwebui.bat                       Windows one-click launcher
+- start-hermes-openwebui.command                   macOS/Linux one-click launcher
+- scripts/install_openwebui_workspace_assets.py   Creates/updates the Hermes Control tool in Workspace
+- scripts/run_openwebui_docker.sh                  Starts Open WebUI and installs workspace assets
+- scripts/                                         Helper scripts and compatibility utilities
+- docker-compose.yml                               Optional Docker deployment
+- HERMES_OPENWEBUI_SETUP_COMPLETE.md               Original setup notes
+- OPENCLAW_FRONTEND_GATEWAY_PLAN.md                OpenClaw-inspired UX notes
 
-How it works
-1. Open WebUI sends normal OpenAI-style chat requests to the adapter.
-2. Open WebUI can forward user/chat headers to the adapter.
-3. The adapter uses the Open WebUI chat id to persist a Hermes session mapping.
-4. Normal messages are routed into Hermes chat mode.
-5. Slash commands are routed into Hermes CLI mode.
-6. Hermes responds using your existing local Hermes configuration.
-7. The adapter returns an OpenAI-compatible response back to Open WebUI.
+Quick start
+- Windows: double-click start-hermes-openwebui.bat
+- macOS/Linux: double-click start-hermes-openwebui.command
+- CLI on any OS: python launcher.py start
 
-Local setup
-1. Bootstrap everything needed for the adapter:
-   ./scripts/install_all.sh
+What the launcher does automatically
+1. Creates .venv if needed
+2. Installs/updates adapter dependencies
+3. Detects your Hermes CLI path automatically
+4. Starts the Hermes adapter on port 8001
+5. Starts Docker Desktop when possible
+6. Runs Open WebUI in Docker on port 8080
+7. Installs/updates the Hermes Control workspace tool in Open WebUI
+8. Opens http://127.0.0.1:8080
 
-2. Start the adapter:
-   ./scripts/start_adapter.sh
+Requirements
+- Python 3
+- Docker Desktop or Docker Engine
+- Hermes CLI already installed locally
 
-3. Run Open WebUI in Docker with session headers forwarded:
-   ./scripts/run_openwebui_docker.sh
+Useful commands
+- python launcher.py start
+- python launcher.py stop
+- python launcher.py restart
+- python launcher.py status
+- python launcher.py start --no-browser
 
-4. Open the GUI:
-   http://127.0.0.1:8080
+Environment overrides
+- HERMES_BIN                    Explicit path to the Hermes executable
+- HERMES_WORKDIR                Explicit Hermes working directory
+- HERMES_OPENAI_MODEL           Model name shown in Open WebUI, default: hermes-gui
+- HERMES_OPENAI_API_KEY         API key used by Open WebUI, default: hermes-local
+- HERMES_ADAPTER_PORT           Adapter port, default: 8001
+- HERMES_WEBUI_PORT             Open WebUI port, default: 8080
+- HERMES_WEBUI_CONTAINER        Docker container name, default: hermes-open-webui
+- HERMES_WEBUI_IMAGE            Open WebUI image, default: ghcr.io/open-webui/open-webui:main
 
-Fastest Windows path
-- Double-click:
-  windows-start-hermes-openwebui.bat
+Compatibility notes
+- Adapter endpoints:
+  - GET /health
+  - GET /v1/models
+  - POST /v1/chat/completions
+  - GET /v1/session-map
+- Non-streaming and basic streaming are supported.
+- Conversation state persists across GUI turns through session mapping when Open WebUI forwards the chat id.
+- On Linux, the launcher automatically adds host.docker.internal -> host-gateway for the container.
 
 Slash commands in Open WebUI
 - /help
@@ -70,30 +98,18 @@ Slash commands in Open WebUI
 - /skills list
 - and many other non-interactive Hermes CLI commands
 
-Compatibility notes
-- The adapter exposes:
-  - GET /v1/models
-  - POST /v1/chat/completions
-  - GET /v1/session-map
-- Non-streaming and basic streaming are supported.
-- Conversation state can now persist across GUI turns through session mapping when the Open WebUI chat id is forwarded.
+Workspace integration
+- Open WebUI Workspace > Tools will automatically get a tool named `Hermes Control`
+- That tool gives you clickable/LLM-callable helpers for:
+  - adapter health
+  - session map
+  - gateway status
+  - sessions list
+  - skills list
+  - cron list
+  - arbitrary Hermes slash-command execution
 
-Current defaults
-- Adapter URL: http://127.0.0.1:8001/v1
-- Open WebUI URL: http://127.0.0.1:8080
-- Model name shown in Open WebUI: hermes-gui
-- OpenAI API key for Open WebUI: hermes-local
-
-Docker recommendation
-- Docker is the better way to run Open WebUI itself on this machine.
-- Native Python is fine for the small adapter.
-- This mixed setup is the simplest stable option here: adapter in WSL + Open WebUI in Docker Desktop.
-
-Important limitation
-- This is an adapter around Hermes CLI, not a native Hermes web app. So tool usage, memory, skills, and settings are preserved through the existing Hermes runtime, but Open WebUI conversations are translated into Hermes prompts instead of using a first-party Hermes HTTP server.
-
-Recommended next improvements
-- Add richer multimodal handling for images/files
-- Add richer command metadata/help output
-- Add auth for the adapter if exposing beyond localhost
-- Optionally add frontend slash-command autocomplete directly into a custom Open WebUI fork
+Notes
+- "No setup needed" here means the launcher bootstraps the adapter environment automatically from this folder.
+- Hermes itself still needs to exist on the machine because this GUI is an adapter around your real Hermes runtime.
+- If Hermes is in a non-standard location, set HERMES_BIN and optionally HERMES_WORKDIR.

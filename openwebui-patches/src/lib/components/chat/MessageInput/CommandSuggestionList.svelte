@@ -31,13 +31,13 @@
 			item?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
 			return true;
 		}
-		if (event.key === 'Enter' || event.key === 'Tab') {
+		if (event.key === 'Tab') {
 			suggestionElement?.select();
-
-			if (event.key === 'Enter') {
-				event.preventDefault();
-			}
+			event.preventDefault();
 			return true;
+		}
+		if (event.key === 'Enter') {
+			return false;
 		}
 		if (event.key === 'Escape') {
 			return true;

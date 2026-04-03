@@ -314,16 +314,31 @@
 			</div>
 		{:else if overview}
 			{#if activeTab === 'overview'}
+				<div class="rounded-3xl border border-gray-100 dark:border-gray-850 bg-gradient-to-br from-white via-white to-gray-50/80 dark:from-black/30 dark:via-black/20 dark:to-gray-950/20 p-5 shadow-sm">
+					<div class="flex items-start justify-between gap-4 flex-wrap">
+						<div>
+							<div class="text-xs uppercase tracking-[0.22em] text-gray-500">Hermes Gateway Control Plane</div>
+							<div class="mt-2 text-2xl font-semibold">Professional live gateway operations</div>
+							<div class="mt-2 text-sm text-gray-500 max-w-3xl">Status, logs, config files, channel setup, and live Hermes controls in one place. The goal is a real admin console, not a raw command dump.</div>
+						</div>
+						<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white/80 dark:bg-black/30 px-4 py-3 min-w-[220px]">
+							<div class="text-xs uppercase tracking-wide text-gray-500">Current health</div>
+							<div class="mt-2 flex items-center gap-2"><span class="inline-block h-2.5 w-2.5 rounded-full {overview.gateway?.exit_code === 0 ? 'bg-emerald-500' : 'bg-amber-500'}"></span><span class="text-lg font-semibold">{overview.gateway?.exit_code === 0 ? 'Gateway online' : 'Needs attention'}</span></div>
+							<div class="mt-1 text-sm text-gray-500">Adapter: {overview.health?.status ?? 'unknown'} · Model: {overview.health?.model}</div>
+						</div>
+					</div>
+				</div>
+
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">Adapter</div><div class="mt-2 text-lg font-semibold">{overview.health?.status ?? 'unknown'}</div><div class="mt-1 text-sm text-gray-500 break-all">{overview.health?.model}</div></div>
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">Gateway</div><div class="mt-2 text-lg font-semibold">{overview.gateway?.exit_code === 0 ? 'Running' : 'Needs Attention'}</div><div class="mt-1 text-sm text-gray-500">Exit code: {overview.gateway?.exit_code}</div></div>
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">Session Map</div><div class="mt-2 text-lg font-semibold">{overview.session_map_count}</div><div class="mt-1 text-sm text-gray-500">Mapped Open WebUI chats</div></div>
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4"><div class="text-xs uppercase tracking-wide text-gray-500">Profiles/Auth</div><div class="mt-2 text-lg font-semibold">{overview.profiles?.exit_code === 0 ? 'Ready' : 'Check'}</div><div class="mt-1 text-sm text-gray-500">CLI control plane status</div></div>
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-gray-500">Adapter</div><div class="mt-2 text-lg font-semibold">{overview.health?.status ?? 'unknown'}</div><div class="mt-1 text-sm text-gray-500 break-all">{overview.health?.model}</div></div>
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-gray-500">Gateway</div><div class="mt-2 text-lg font-semibold">{overview.gateway?.exit_code === 0 ? 'Running' : 'Needs Attention'}</div><div class="mt-1 text-sm text-gray-500">Exit code: {overview.gateway?.exit_code}</div></div>
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-gray-500">Session Map</div><div class="mt-2 text-lg font-semibold">{overview.session_map_count}</div><div class="mt-1 text-sm text-gray-500">Mapped Open WebUI chats</div></div>
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 bg-white dark:bg-black/20 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-gray-500">Profiles/Auth</div><div class="mt-2 text-lg font-semibold">{overview.profiles?.exit_code === 0 ? 'Ready' : 'Check'}</div><div class="mt-1 text-sm text-gray-500">CLI control plane status</div></div>
 				</div>
 
 				<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="flex items-center justify-between gap-2"><div class="text-sm font-semibold">Gateway Status</div><Badge>{overview.gateway?.exit_code === 0 ? 'online' : 'degraded'}</Badge></div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{overview.gateway?.stdout || overview.gateway?.stderr || overview.gateway?.rendered}</pre></div>
-					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4"><div class="text-sm font-semibold">Gateway Log Tail</div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-x-auto">{configFiles?.gateway_log_tail || 'No gateway log output yet.'}</pre></div>
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20 shadow-sm"><div class="flex items-center justify-between gap-2"><div><div class="text-sm font-semibold">Gateway status</div><div class="text-xs text-gray-500">Structured command output rendered in a terminal-style card.</div></div><Badge>{overview.gateway?.exit_code === 0 ? 'online' : 'degraded'}</Badge></div><pre class="mt-3 text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-950 rounded-2xl p-4 overflow-x-auto border border-gray-100 dark:border-gray-800 font-mono">{overview.gateway?.stdout || overview.gateway?.stderr || overview.gateway?.rendered}</pre></div>
+					<div class="rounded-2xl border border-gray-100 dark:border-gray-850 p-4 bg-white dark:bg-black/20 shadow-sm"><div class="flex items-center justify-between gap-2"><div><div class="text-sm font-semibold">Gateway live log</div><div class="text-xs text-gray-500">Console-style tail view for background activity and diagnostics.</div></div><Badge>{fileLineCount(configFiles?.gateway_log_tail || '')} lines</Badge></div><div class="mt-3 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-950 to-black text-slate-100 overflow-hidden"><div class="px-4 py-2 border-b border-slate-800 text-[11px] uppercase tracking-[0.18em] text-slate-400">gateway.log</div><pre class="px-4 py-4 text-xs whitespace-pre-wrap break-words overflow-x-auto max-h-[26rem] font-mono">{configFiles?.gateway_log_tail || 'No gateway log output yet.'}</pre></div></div>
 				</div>
 			{:else if activeTab === 'channels'}
 				<div class="grid grid-cols-1 xl:grid-cols-[300px,1fr] gap-4">

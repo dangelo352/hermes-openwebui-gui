@@ -925,6 +925,7 @@ def _build_live_chat_streaming_response(
 
         session_id: str | None = None
         collected: list[str] = []
+        trace_started = False
         assert process.stdout is not None
 
         try:
@@ -939,7 +940,10 @@ def _build_live_chat_streaming_response(
                 if show_trace:
                     clean = _sanitize_stream_line(text)
                     if clean:
-                        yield _sse_chunk(completion_id, created, model, content=clean)
+                        if not trace_started:
+                            trace_started = True
+                            yield _sse_chunk(completion_id, created, model, content="Tool activity:\n")
+                        yield _sse_chunk(completion_id, created, model, content=clean.rstrip("\n") + "\n")
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
@@ -956,13 +960,8 @@ def _build_live_chat_streaming_response(
             yield _sse_chunk(completion_id, created, model, content=f"\n[adapter] Error:\n{detail}\n")
         else:
             final_text = _extract_text(full_output)
-            if show_trace:
-                trace_lines = _extract_tool_trace(full_output)
-                if trace_lines:
-                    tool_header = "Tool activity:\n" + "\n".join(trace_lines) + "\n\nResult:\n"
-                    final_text = tool_header + final_text if final_text else tool_header.rstrip()
             if final_text:
-                prefix = "\n\n" if collected and show_trace else ""
+                prefix = "\n\nResult:\n" if trace_started else ""
                 suffix = "\n"
                 pieces = _chunk_text_for_stream(prefix + final_text + suffix)
                 for piece in pieces:

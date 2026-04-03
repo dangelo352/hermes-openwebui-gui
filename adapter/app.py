@@ -113,6 +113,10 @@ class ModelCard(BaseModel):
     owned_by: str = "hermes"
 
 
+class HermesCommandRequest(BaseModel):
+    command: str
+
+
 def _ensure_state_dir() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -242,8 +246,9 @@ def _build_incremental_prompt(messages: list[ChatMessage]) -> str:
     raise HTTPException(status_code=400, detail="No usable message content found")
 
 def _extract_box_content(stdout: str) -> str | None:
-    box_match = re.search(r"╭─ ⚕ Hermes .*?╮\n(.*?)\n╰──────────────────────────────────────────────────────────────────────────────╯", stdout, re.DOTALL)
-    return box_match.group(1).strip() if box_match else None
+    normalized = stdout.replace("\r\n", "\n").replace("\r", "\n")
+    matches = re.findall(r"╭─ ⚕ Hermes [^\n]*╮\n(.*?)\n╰[^\n]*╯", normalized, re.DOTALL)
+    return matches[-1].strip() if matches else None
 
 
 def _extract_tool_trace(stdout: str) -> list[str]:
@@ -291,6 +296,24 @@ def _extract_session_id(stdout: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _sanitize_stream_line(text: str) -> str | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    safe_prefixes = (
+        "↻ Resumed session",
+        "┊",
+        "📞 Tool",
+        "✅ Tool",
+        "Args:",
+        "Result:",
+    )
+    if stripped.startswith(safe_prefixes):
+        return text
+    return None
+
+
 def _should_show_trace(prompt: str) -> bool:
     lowered = prompt.lower()
     coding_markers = [
@@ -328,16 +351,18 @@ def _run_subprocess(cmd: list[str], timeout: int) -> subprocess.CompletedProcess
         raise HTTPException(status_code=504, detail=f"Command timed out after {timeout}s") from exc
 
 
-def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[str, str | None]:
-    show_trace = _should_show_trace(prompt)
+def _build_hermes_chat_cmd(prompt: str, resume_session: str | None = None, force_verbose: bool = False) -> tuple[list[str], bool]:
+    show_trace = force_verbose or _should_show_trace(prompt)
     cmd = [HERMES_BIN, "chat", "--source", HERMES_SOURCE]
-    if not show_trace:
-        cmd.append("-Q")
-    else:
-        cmd.append("-v")
+    cmd.append("-v" if show_trace else "-Q")
     if resume_session:
         cmd.extend(["--resume", resume_session])
     cmd.extend(["-q", prompt])
+    return cmd, show_trace
+
+
+def _run_hermes_chat(prompt: str, resume_session: str | None = None) -> tuple[str, str | None]:
+    cmd, show_trace = _build_hermes_chat_cmd(prompt, resume_session)
     result = _run_subprocess(cmd, CHAT_TIMEOUT_SECONDS)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "Hermes chat failed").strip()
@@ -546,6 +571,84 @@ def _build_streaming_response(text: str, completion_id: str, created: int, model
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+def _sse_chunk(completion_id: str, created: int, model: str, content: str | None = None, *, role: str | None = None, finish_reason: str | None = None) -> str:
+    delta: dict[str, Any] = {}
+    if role is not None:
+        delta["role"] = role
+    if content:
+        delta["content"] = content
+    payload = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+    }
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _build_live_chat_streaming_response(
+    prompt: str,
+    resume_session: str | None,
+    context: dict[str, str | None],
+    completion_id: str,
+    created: int,
+    model: str,
+) -> StreamingResponse:
+    async def event_stream():
+        yield _sse_chunk(completion_id, created, model, role="assistant")
+
+        cmd, _ = _build_hermes_chat_cmd(prompt, resume_session, force_verbose=True)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=HERMES_WORKDIR,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+
+        session_id: str | None = None
+        collected: list[str] = []
+        assert process.stdout is not None
+
+        try:
+            while True:
+                line = await asyncio.wait_for(process.stdout.readline(), timeout=CHAT_TIMEOUT_SECONDS)
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace")
+                collected.append(text)
+                if not session_id:
+                    session_id = _extract_session_id(text)
+                clean = _sanitize_stream_line(text)
+                if clean:
+                    yield _sse_chunk(completion_id, created, model, content=clean)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            yield _sse_chunk(completion_id, created, model, content="\n[adapter] Hermes request timed out.\n", finish_reason="stop")
+            yield "data: [DONE]\n\n"
+            return
+
+        return_code = await process.wait()
+        full_output = "".join(collected)
+        if not session_id:
+            session_id = _extract_session_id(full_output)
+        if return_code != 0:
+            detail = full_output.strip() or "Hermes chat failed"
+            yield _sse_chunk(completion_id, created, model, content=f"\n[adapter] Error:\n{detail}\n")
+        else:
+            final_text = _extract_text(full_output)
+            if final_text:
+                yield _sse_chunk(completion_id, created, model, content=f"\n\n{final_text}\n")
+            if session_id and context.get("chat_id"):
+                _set_mapped_session(context.get("chat_id"), context.get("user_id"), session_id)
+
+        yield _sse_chunk(completion_id, created, model, finish_reason="stop")
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "model": MODEL_NAME, "hermes_bin": HERMES_BIN, "hermes_workdir": HERMES_WORKDIR}
@@ -581,12 +684,16 @@ async def chat_completions(request: Request, payload: ChatCompletionRequest):
 
     mapped_session = _get_mapped_session(context.get("chat_id"), context.get("user_id"))
     prompt = _build_incremental_prompt(payload.messages) if mapped_session else _build_prompt(payload.messages)
+
+    if payload.stream:
+        return _build_live_chat_streaming_response(prompt, mapped_session, context, completion_id, created, model)
+
     text, session_id = await asyncio.to_thread(_run_hermes_chat, prompt, mapped_session)
 
     if session_id and context.get("chat_id"):
         _set_mapped_session(context.get("chat_id"), context.get("user_id"), session_id)
 
-    return _build_streaming_response(text, completion_id, created, model) if payload.stream else _build_openai_response(text, completion_id, created, model)
+    return _build_openai_response(text, completion_id, created, model)
 
 
 @app.get("/")

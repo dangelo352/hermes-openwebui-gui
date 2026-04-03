@@ -28,6 +28,9 @@ What is new now
 GitHub repo
 - https://github.com/dangelo352/hermes-openwebui-gui
 
+High-context maintainer guide
+- MAINTAINER_GUIDE.md
+
 Project layout
 - adapter/app.py                                   FastAPI OpenAI-compatible wrapper
 - workspace/hermes_control_tool.py                 Hermes Workspace tool for Open WebUI

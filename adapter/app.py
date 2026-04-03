@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from collections import deque
 
+import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -77,6 +78,11 @@ SESSION_MAP_PATH = STATE_DIR / "session_map.json"
 UPDATE_REBUILD_LOG_PATH = STATE_DIR / "update-rebuild.log"
 UPDATE_REBUILD_PID_PATH = STATE_DIR / "update-rebuild.pid"
 UPDATE_REBUILD_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "update_from_git_and_rebuild.sh"
+HERMES_HOME = Path.home() / ".hermes"
+HERMES_ENV_PATH = HERMES_HOME / ".env"
+HERMES_CONFIG_PATH = HERMES_HOME / "config.yaml"
+CHANNEL_DIRECTORY_PATH = HERMES_HOME / "channel_directory.json"
+GATEWAY_LOG_PATH = HERMES_HOME / "logs" / "gateway.log"
 
 app = FastAPI(title="Hermes OpenAI Adapter", version="0.3.0")
 app.add_middleware(
@@ -121,6 +127,16 @@ class HermesCommandRequest(BaseModel):
     command: str
 
 
+class HermesEnvUpdateRequest(BaseModel):
+    key: str
+    value: str
+
+
+class HermesConfigUpdateRequest(BaseModel):
+    path: str
+    value: Any
+
+
 class UpdateRebuildRequest(BaseModel):
     git_pull: bool = True
 
@@ -142,6 +158,107 @@ def _load_session_map() -> dict[str, Any]:
 def _save_session_map(data: dict[str, Any]) -> None:
     _ensure_state_dir()
     SESSION_MAP_PATH.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _read_text_file(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def _parse_env_text(text: str) -> dict[str, str]:
+    data: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in raw_line:
+            continue
+        key, value = raw_line.split("=", 1)
+        data[key.strip()] = value.strip()
+    return data
+
+
+def _mask_secret(key: str, value: str) -> str:
+    secret_markers = ("TOKEN", "KEY", "PASSWORD", "SECRET", "URL", "ACCOUNT")
+    if not value:
+        return ""
+    if any(marker in key.upper() for marker in secret_markers):
+        if len(value) <= 8:
+            return "*" * len(value)
+        return value[:4] + ("*" * max(4, len(value) - 8)) + value[-4:]
+    return value
+
+
+def _read_env_payload() -> dict[str, Any]:
+    raw = _read_text_file(HERMES_ENV_PATH)
+    env = _parse_env_text(raw)
+    return {
+        "path": str(HERMES_ENV_PATH),
+        "raw": raw,
+        "values": env,
+        "masked": {key: _mask_secret(key, value) for key, value in env.items()},
+    }
+
+
+def _read_config_payload() -> dict[str, Any]:
+    raw = _read_text_file(HERMES_CONFIG_PATH)
+    parsed = yaml.safe_load(raw) if raw.strip() else {}
+    return {
+        "path": str(HERMES_CONFIG_PATH),
+        "raw": raw,
+        "values": parsed or {},
+    }
+
+
+def _set_dotted_path(data: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
+    target = data
+    parts = [part for part in path.split(".") if part]
+    if not parts:
+        raise HTTPException(status_code=400, detail="Config path cannot be empty")
+    for part in parts[:-1]:
+        current = target.get(part)
+        if not isinstance(current, dict):
+            current = {}
+            target[part] = current
+        target = current
+    target[parts[-1]] = value
+    return data
+
+
+def _write_env_key(key: str, value: str) -> None:
+    existing = _read_text_file(HERMES_ENV_PATH)
+    lines = existing.splitlines()
+    updated = False
+    new_lines: list[str] = []
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            updated = True
+        else:
+            new_lines.append(line)
+    if not updated:
+        if new_lines and new_lines[-1] != "":
+            new_lines.append("")
+        new_lines.append(f"{key}={value}")
+    HERMES_ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    HERMES_ENV_PATH.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+def _write_config_path(path: str, value: Any) -> None:
+    payload = _read_config_payload()["values"]
+    if not isinstance(payload, dict):
+        payload = {}
+    updated = _set_dotted_path(payload, path, value)
+    HERMES_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    HERMES_CONFIG_PATH.write_text(yaml.safe_dump(updated, sort_keys=False), encoding="utf-8")
+
+
+def _read_gateway_files_payload() -> dict[str, Any]:
+    return {
+        "env": _read_env_payload(),
+        "config": _read_config_payload(),
+        "channel_directory": json.loads(_read_text_file(CHANNEL_DIRECTORY_PATH) or "{}"),
+        "gateway_log_tail": "\n".join(_read_text_file(GATEWAY_LOG_PATH).splitlines()[-200:]),
+    }
 
 
 def _session_key(chat_id: str | None, user_id: str | None) -> str | None:
@@ -825,6 +942,25 @@ def session_map() -> dict[str, Any]:
 @app.get("/v1/hermes/overview")
 def hermes_overview() -> dict[str, Any]:
     return _gateway_overview()
+
+
+@app.get("/v1/hermes/config-files")
+def hermes_config_files() -> dict[str, Any]:
+    return _read_gateway_files_payload()
+
+
+@app.post("/v1/hermes/config-files/env")
+def hermes_update_env(payload: HermesEnvUpdateRequest) -> dict[str, Any]:
+    if not payload.key.strip():
+        raise HTTPException(status_code=400, detail="Env key cannot be empty")
+    _write_env_key(payload.key.strip(), str(payload.value))
+    return _read_gateway_files_payload()
+
+
+@app.post("/v1/hermes/config-files/config")
+def hermes_update_config(payload: HermesConfigUpdateRequest) -> dict[str, Any]:
+    _write_config_path(payload.path.strip(), payload.value)
+    return _read_gateway_files_payload()
 
 
 @app.post("/v1/hermes/command")

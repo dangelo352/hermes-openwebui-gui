@@ -1,0 +1,29 @@
+services:
+  hermes-adapter:
+    image: python:3.11-slim
+    working_dir: /app
+    command: >-
+      bash -lc "pip install --no-cache-dir -r requirements.txt && uvicorn adapter.app:app --host 0.0.0.0 --port 8001"
+    environment:
+      HERMES_BIN: /root/.hermes/hermes-agent/venv/bin/hermes
+      HERMES_WORKDIR: /root/.hermes/hermes-agent
+      HERMES_OPENAI_MODEL: hermes-gui
+      HERMES_OPENAI_API_KEY: hermes-local
+    volumes:
+      - ./:/app
+      - /root/.hermes:/root/.hermes
+    ports:
+      - "8001:8001"
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    depends_on:
+      - hermes-adapter
+    environment:
+      ENABLE_OPENAI_API: "True"
+      OPENAI_API_BASE_URL: http://hermes-adapter:8001/v1
+      OPENAI_API_KEY: hermes-local
+      WEBUI_AUTH: "False"
+    volumes:
+      - ./open-webui-data:/app/backend/data
+    ports:
+      - "3000:8080"

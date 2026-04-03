@@ -103,11 +103,17 @@ Workspace integration
 - That tool gives you clickable/LLM-callable helpers for:
   - adapter health
   - session map
-  - gateway status
+  - gateway status / restart / start / stop
   - sessions list
   - skills list
   - cron list
+  - config summary
+  - doctor
+  - tool summary
+  - memory help
+  - session mapping actions
   - arbitrary Hermes slash-command execution
+  - arbitrary Hermes CLI passthrough via `/hermes ...`
 
 Notes
 - "No setup needed" here means the launcher bootstraps the adapter environment automatically from this folder.

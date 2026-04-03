@@ -199,10 +199,17 @@ That tool is installed automatically after Open WebUI starts and gives you Works
 - adapter health
 - session map
 - gateway status
+- gateway restart / start / stop
 - sessions list
 - skills list
 - cron list
+- config summary
+- doctor
+- tool summary
+- memory help
+- current session mapping actions
 - arbitrary Hermes slash-command execution
+- arbitrary Hermes CLI passthrough
 
 This follows your preference to keep extra functionality under existing Open WebUI workspace areas instead of building a whole custom sidebar.
 
